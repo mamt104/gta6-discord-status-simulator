@@ -1,24 +1,16 @@
-# Build output
-build/
-dist/
-*.exe
-*.pdb
-*.ico
+# Changelog
 
-# Local Discord configuration
-gta6-presence.txt
-gta6-profile.ini
-gta6-image.txt
+## 1.1.0
 
-# User-provided artwork
-assets/app-icon.png
-assets/rich-presence-cover.png
+- made Discord detection the default mode on every startup;
+- documented the required Registered Games setup;
+- standardized the executable name as `GTA6.exe`;
+- removed the artificial `1 of 1` party indicator;
+- removed the preorder/store button;
+- documented Discord's custom Rich Presence hover behavior;
+- translated the application and all public documentation into English;
+- kept custom activity rotation, manual statuses, character selection, profiles, and the optional Join URL.
 
-# IDE and operating-system files
-.vs/
-.vscode/
-*.user
-*.suo
-Thumbs.db
-.DS_Store
+## 1.0.0
 
+- initial community package.

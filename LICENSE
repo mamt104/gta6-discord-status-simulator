@@ -1,16 +1,21 @@
-# Changelog
+MIT License
 
-## 1.1.0
+Copyright (c) 2026 Community contributors
 
-- made Discord detection the default mode on every startup;
-- documented the required Registered Games setup;
-- standardized the executable name as `GTA6.exe`;
-- removed the artificial `1 of 1` party indicator;
-- removed the preorder/store button;
-- documented Discord's custom Rich Presence hover behavior;
-- translated the application and all public documentation into English;
-- kept custom activity rotation, manual statuses, character selection, profiles, and the optional Join URL.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-## 1.0.0
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-- initial community package.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

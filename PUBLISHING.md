@@ -1,35 +1,69 @@
-param(
-    [string]$ApplicationId,
-    [string]$AssetKey = 'gtavi_cover'
-)
+# Publishing on GitHub
 
-$ErrorActionPreference = 'Stop'
-$ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$DistDirectory = Join-Path $ProjectRoot 'dist'
-$ExecutablePath = Join-Path $DistDirectory 'GTA6.exe'
+## Pre-publish checklist
 
-if (-not (Test-Path -LiteralPath $ExecutablePath)) {
-    throw 'Build not found. Run .\build.ps1 first.'
-}
+Do not add any of the following to the repository:
 
-if (-not $ApplicationId) {
-    $ApplicationId = Read-Host 'Paste your Discord Application ID (not your user ID)'
-}
-$ApplicationId = $ApplicationId.Trim()
-if ($ApplicationId -notmatch '^\d{15,25}$') {
-    throw 'Invalid Application ID: expected 15-25 digits.'
-}
+- Bot Tokens or Client Secrets;
+- Discord webhooks;
+- `dist/gta6-presence.txt` containing your personal Application ID;
+- personal profiles or screenshots containing account information;
+- artwork or logos that you are not allowed to redistribute;
+- old executables or test directories.
 
-$AssetKey = $AssetKey.Trim()
-if ($AssetKey -notmatch '^[A-Za-z0-9_-]{2,256}$') {
-    throw 'Invalid asset key. Use letters, digits, underscores, or hyphens.'
-}
+The included `.gitignore` excludes build output, executables, local configuration, and user-provided assets.
 
-[System.IO.File]::WriteAllText((Join-Path $DistDirectory 'gta6-presence.txt'), $ApplicationId)
-[System.IO.File]::WriteAllText((Join-Path $DistDirectory 'gta6-image.txt'), $AssetKey)
+## Protect your commit identity
 
-Write-Host 'Configuration saved.'
-Write-Host "Application ID: $ApplicationId"
-Write-Host "Large image asset key: $AssetKey"
-Write-Host "Run: $ExecutablePath"
+Git commits contain an author name and email address. Enable **Keep my email addresses private** in your GitHub email settings and use the GitHub-provided `noreply` address if you do not want to publish your personal email.
 
+Check the repository-specific values before the first commit:
+
+```powershell
+git config user.name
+git config user.email
+```
+
+## Create the local repository
+
+From PowerShell in the project directory:
+
+```powershell
+git init
+git add .
+git status
+git commit -m "Initial community release"
+git branch -M main
+```
+
+Review the output of `git status` carefully before committing.
+
+## Connect GitHub
+
+Create an empty repository on GitHub, then use the URL shown by GitHub:
+
+```powershell
+git remote add origin https://github.com/YOUR-USERNAME/REPOSITORY-NAME.git
+git push -u origin main
+```
+
+Choose **Private** if you do not want the source to be publicly visible. Anyone can technically read and copy files from a **Public** repository. A license defines permitted use but cannot prevent downloads.
+
+## Publish a release
+
+Attach the packaged download to a GitHub Release instead of storing every release binary in Git history.
+
+Suggested release fields:
+
+```text
+Tag: v1.1.0
+Title: GTA VI Discord Rich Presence v1.1.0
+```
+
+Calculate and publish the SHA-256 hash:
+
+```powershell
+Get-FileHash .\dist\GTA6.exe -Algorithm SHA256
+```
+
+Unsigned executables can trigger Windows SmartScreen or antivirus warnings. Publishing the source and reproducible build instructions allows users to inspect and verify the program.

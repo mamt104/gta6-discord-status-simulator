@@ -1,0 +1,10 @@
+Version=3
+OfficialMode=True
+StartupDelay=False
+JoinButton=True
+RotationMinutes=0
+Mode=Auto
+SessionMode=UmVhbGlzdGljIEF1dG8=
+Character=QXV0b21hdGlj
+StatusBase64=
+StateBase64=

@@ -11,7 +11,7 @@ Do not add any of the following to the repository:
 - artwork or logos that you are not allowed to redistribute;
 - old executables or test directories.
 
-The included `.gitignore` excludes build output, executables, local configuration, and user-provided assets.
+The included `.gitignore` excludes local builds, personal configuration, and user-provided artwork. The repository intentionally tracks only the sanitized files under `dist` that are part of the public ready-to-run package.
 
 ## Protect your commit identity
 

@@ -1,173 +1,201 @@
-# GTA VI Discord Rich Presence 🌴
+<p align="center">
+  <img src="assets/hero.png" alt="Neon coastal skyline at dusk" width="100%">
+</p>
 
-A polished and configurable Windows presence simulator with Discord game detection, realistic activity rotation, custom statuses, character selection, and saved profiles.
+<h1 align="center">GTA VI Discord Rich Presence</h1>
+
+<p align="center">
+  A polished Windows presence simulator with Discord game detection, realistic activity rotation,
+  custom statuses, character selection, and saved profiles.
+</p>
+
+<p align="center">
+  <a href="https://github.com/mamt104/gta6-discord-rich-presence/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/mamt104/gta6-discord-rich-presence?style=for-the-badge&color=ff4aa2"></a>
+  <a href="https://github.com/mamt104/gta6-discord-rich-presence/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-5b5bd6?style=for-the-badge"></a>
+  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-1877f2?style=for-the-badge&logo=windows">
+  <img alt="No bot token required" src="https://img.shields.io/badge/Bot%20token-not%20required-35d07f?style=for-the-badge">
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#choose-your-mode">Modes</a> ·
+  <a href="#build-from-source">Build</a> ·
+  <a href="#troubleshooting">Troubleshooting</a> ·
+  <a href="SECURITY.md">Security</a>
+</p>
 
 > [!IMPORTANT]
-> This is an unofficial fan project. It is not affiliated with, endorsed by, or sponsored by Rockstar Games, Take-Two Interactive, or Discord. It does not include GTA VI and is not evidence of access to a game build.
+> This is an unofficial fan-made utility. It is not affiliated with, endorsed by, or sponsored by Rockstar Games, Take-Two Interactive, or Discord. It does not include GTA VI and is not evidence of access to a game build.
 
-## Required first-time setup
+## What it does
 
-**You must run `GTA6.exe` and add that running executable to Discord's Registered Games list. This is the only supported way to make Discord detection mode work correctly.**
+The app can appear in Discord through normal executable detection or send a custom Rich Presence through your own Discord Application ID. It is designed for convincing presentation while keeping setup local, transparent, and reversible.
 
-1. Build or download the project and launch the fixed-name file `GTA6.exe`.
-2. Keep the program running.
-3. Open **Discord → User Settings → Registered Games**.
-4. Select **Add it!** and choose the running `GTA6.exe`.
-5. Keep **Discord detection only** enabled in the app.
-6. Do not rename or move `GTA6.exe` after registering it. If you move it, remove the old Registered Games entry and add the new path again.
+| Highlight | What you get |
+| --- | --- |
+| Natural Discord detection | Discord controls the game card, hover behavior, profile link, and recent activity |
+| Session director | Ordered or manual activities with realistic timing |
+| Flexible rotation | Variable timing or fixed 1, 3, 5, 10, 15, or 30-minute intervals |
+| Character selection | Jason, Lucia, or combined play sessions |
+| Clean startup | Optional five-minute period without a description |
+| Personal control | Custom status text and an optional `Join` URL button |
+| Persistent settings | Your selected mode and profile are restored on the next launch |
+| Minimal access | No Bot Token, Client Secret, Discord password, or administrator rights required |
 
-Without this step, Discord may display the wrong name or icon, fail to create recent activity, or treat each renamed build as a different game.
+## Quick start
 
-Discord ultimately controls detected Game Profiles, icons, links, and recent activity. Detection can vary by client version, account, cache, executable path, and Discord's server-side game database; the application cannot guarantee an official or verified profile.
+### 1. Download and extract
 
-## Two separate modes
+Download the latest package from [Releases](https://github.com/mamt104/gta6-discord-rich-presence/releases/latest), extract the entire ZIP, and keep all included files together.
 
-### Discord detection only — recommended
+### 2. Launch the fixed executable
 
-- starts automatically every time the app opens;
-- sends no custom Rich Presence payload;
-- lets Discord control the detected game card and hover behavior;
-- avoids artificial party text such as `1 of 1`;
-- gives the most natural result available through executable detection.
+Run `GTA6.exe`. Do not rename or move it after registration.
 
-### Custom Rich Presence — optional
+### 3. Register it in Discord
 
-Disable **Discord detection only**, enter your own Discord Application ID, and select **START**. This mode enables custom scenes, rotating descriptions, timers, and the optional `Join` URL button.
+With the program still running:
 
-Custom Rich Presence replaces the detected game card. Discord may make the complete `name + details + state` block clickable or underline the entire block on hover. Rich Presence does not provide a setting that makes only the game name clickable, and it cannot claim another publisher's official Game Profile.
+1. Open **Discord → User Settings → Registered Games**.
+2. Select **Add it!**.
+3. Choose the running `GTA6.exe`.
+4. Leave **Discord detection only** enabled in the app.
 
-## Features
+This registration step is required. Without it, Discord may display the wrong name or icon, skip recent activity, or treat renamed builds as different games.
 
-- pure Discord detection mode enabled on every startup;
-- realistic automatic activity sequence or manual status control;
-- variable scene timing or fixed 1, 3, 5, 10, 15, or 30-minute intervals;
-- Jason, Lucia, or combined character selection;
-- continuous session timer;
-- optional five-minute startup period with no description;
-- optional `Join` URL button;
-- automatic profile saving;
-- no artificial party size in single-player;
-- no Bot Token, Client Secret, or Discord login required.
+> [!TIP]
+> If you move the extracted folder later, remove the old Registered Games entry and add the executable again from its new path.
 
-## Requirements
+## Choose your mode
 
-- Windows 10 or Windows 11;
-- the Discord desktop app running on the same computer;
-- Microsoft .NET Framework 4.x;
-- your own Discord Developer application only if you want custom Rich Presence.
+| | Discord detection only | Custom Rich Presence |
+| --- | --- | --- |
+| Best for | The most natural Discord game card | Custom scenes, state text, timer, and button |
+| Setup | Add `GTA6.exe` to Registered Games | Create a Discord application and enter its Application ID |
+| Card and icon | Managed by Discord | Managed by your Discord application and Art Assets |
+| Recent activity | Controlled by Discord | Not guaranteed |
+| Custom rotating details | No | Yes |
+| Click and hover behavior | Controlled by Discord Game Profiles | Controlled by Discord Rich Presence |
 
-This is not technically a Discord bot. It is a desktop program that communicates with the local Discord client through Rich Presence IPC.
+**Discord detection only** starts automatically on every launch and sends no custom RPC payload. It is the recommended mode when the detected Game Profile is your priority.
 
-## Build from source
+**Custom Rich Presence** replaces the detected card. Discord can underline or make the complete `name + details + state` block clickable; the RPC protocol does not expose a setting that limits the clickable area to the game name.
 
-Open PowerShell in the project directory and run:
+## Custom Rich Presence setup
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build.ps1
-```
+Skip this section if you only want Discord detection.
 
-The fixed-name executable is created at:
+### Create your Discord application
 
-```text
-dist\GTA6.exe
-```
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications).
+2. Select **New Application** and choose a name.
+3. Under **General Information**, copy the **Application ID**.
+4. Do not use your Discord user ID; it is a different value.
+5. You do not need to create a bot.
 
-To remove previous build output and rebuild:
+### Add an image asset
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build.ps1 -Clean
-```
-
-If you add `assets\app-icon.png` before building, the build script generates and embeds a Windows icon. Without that optional file, Windows uses the default executable icon.
-
-## Configure custom Rich Presence
-
-You can skip this section when using **Discord detection only**.
-
-### 1. Create a Discord application
-
-1. Open <https://discord.com/developers/applications>.
-2. Select **New Application**.
-3. Choose a name.
-4. Under **General Information**, copy the **Application ID**.
-5. Do not use your Discord user ID; it is a different identifier.
-6. You do not need to create a bot.
-7. Never share a Bot Token or Client Secret. This project does not use either one.
-
-### 2. Upload a Rich Presence image
-
-1. In the Developer Portal, open **Rich Presence → Art Assets**.
+1. Open **Rich Presence → Art Assets** in your application.
 2. Upload a square PNG or JPG, preferably 1024 × 1024.
-3. Before saving it, assign the asset key `gtavi_cover`.
-4. Discord does not allow saved asset keys to be renamed. Delete and upload the asset again if you need a different key.
-5. Only use artwork that you are allowed to use or distribute.
+3. Assign the asset key `gtavi_cover` before saving it.
+4. Use only artwork that you are allowed to upload or distribute.
 
-Rockstar artwork is intentionally not included. See [assets/README.md](assets/README.md) for optional local filenames.
+Discord does not let you rename a saved asset key. Delete and upload the image again if the key is wrong. Rockstar artwork is intentionally not included; see [assets/README.md](assets/README.md).
 
-### 3. Save your Application ID
+### Save the Application ID
 
-Run:
+From PowerShell in the project folder:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\configure.ps1
 ```
 
-Paste your Application ID when prompted. To use a different image asset key:
+To use a different image key:
 
 ```powershell
 .\configure.ps1 -AssetKey "my_cover"
 ```
 
-The script creates these local files under `dist`:
+The script creates local configuration under `dist`. Application IDs are public identifiers, but Bot Tokens, Client Secrets, OAuth tokens, passwords, and webhooks must never be pasted into the app or committed.
 
-- `gta6-presence.txt`: your public Application ID;
-- `gta6-image.txt`: the uploaded image asset key;
-- `gta6-profile.ini`: settings saved by the app.
+## Build from source
 
-These local configuration files are excluded from Git.
+Requirements:
 
-## Run
+- Windows 10 or Windows 11;
+- Discord desktop running on the same computer;
+- Microsoft .NET Framework 4.x.
+
+Build with the C# compiler included in .NET Framework:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+```
+
+The fixed-name executable is written to `dist\GTA6.exe`. For a clean rebuild:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -Clean
+```
+
+Run it with:
 
 ```powershell
 .\run.ps1
 ```
 
-You can also launch `dist\GTA6.exe` directly. Always keep the filename and registered path unchanged when using Discord detection.
+If you add an authorized square image as `assets\app-icon.png`, the build embeds it as the Windows executable icon.
 
 ## Troubleshooting
 
-### Discord does not show the game
+<details>
+<summary><strong>Discord does not show the game</strong></summary>
 
-- confirm that the Discord desktop app is open;
-- run `GTA6.exe` before opening Registered Games;
-- add the exact running executable through **Add it!**;
-- keep **Discord detection only** enabled;
-- remove stale entries for old names such as `GTA6-v1.0-READY.exe`;
-- restart Discord after changing the registered path.
+- Confirm the Discord desktop app is open.
+- Run `GTA6.exe` before opening Registered Games.
+- Add the exact running executable with **Add it!**.
+- Keep **Discord detection only** enabled.
+- Remove stale entries for renamed or older builds.
+- Restart Discord after changing the registered path.
 
-### The whole text block is underlined on hover
+</details>
 
-You are using custom Rich Presence. Discord controls that hover style, and the RPC payload cannot change its clickable area. Re-enable **Discord detection only** for pure executable detection.
+<details>
+<summary><strong>The whole text block is underlined on hover</strong></summary>
 
-### The Rich Presence image does not appear
+That is Discord's custom Rich Presence presentation. Re-enable **Discord detection only** for pure executable detection. The app cannot override Discord's clickable area.
 
-- make sure `dist\gta6-image.txt` exactly matches the Developer Portal asset key;
-- allow a few minutes for Discord's cache to update;
-- quit and reopen Discord;
-- delete and upload the asset again if you tried to rename a saved key.
+</details>
 
-### Buttons do not appear on my own profile
+<details>
+<summary><strong>The Rich Presence image does not appear</strong></summary>
 
-Discord may hide an activity's URL buttons from its owner. Check the Presence from a second account or ask a friend.
+- Confirm that `dist\gta6-image.txt` exactly matches the Developer Portal asset key.
+- Allow a few minutes for Discord's image cache to update.
+- Fully quit and reopen Discord.
+- Delete and re-upload the Art Asset if you previously tried to rename its key.
 
-## Security and privacy
+</details>
 
-Read [SECURITY.md](SECURITY.md). Application IDs and Public Keys are public; Bot Tokens and Client Secrets are private. The program does not collect passwords and does not require administrator privileges.
+<details>
+<summary><strong>Buttons do not appear on my own profile</strong></summary>
 
-## Publishing on GitHub
+Discord may hide an activity's URL buttons from its owner. Check the presence from a second account or ask a friend.
 
-See [PUBLISHING.md](PUBLISHING.md). Before publishing, confirm that `git status` does not contain personal configuration, unlicensed artwork, tokens, webhooks, or secrets.
+</details>
+
+## Privacy and security
+
+This is a desktop app, not a Discord bot. It talks only to the local Discord client through Rich Presence IPC and does not collect account passwords. Read [SECURITY.md](SECURITY.md) before publishing a fork.
+
+Application IDs and Public Keys are public identifiers. Bot Tokens and Client Secrets are private credentials and are never required by this project.
+
+## Contributing
+
+Issues and pull requests are welcome for reproducible bugs, UI improvements, documentation, and new activity sequences. Please keep submissions free of personal configuration and unlicensed artwork.
+
+If the project helped you, starring the repository makes it easier for other people to discover it.
 
 ## License
 
-The source code is available under the [MIT License](LICENSE). Third-party names, trademarks, and artwork remain the property of their respective owners.
+Source code is available under the [MIT License](LICENSE). Third-party names, trademarks, and artwork remain the property of their respective owners. The repository hero is original project artwork and is not official game art.

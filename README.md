@@ -5,8 +5,8 @@
 <h1 align="center">GTA VI Discord Status Simulator</h1>
 
 <p align="center">
-  A polished Windows presence simulator with Discord game detection, realistic activity rotation,
-  custom statuses, character selection, and saved profiles.
+  A Windows simulator that can use Discord's own game detection for a realistic, clickable Game Profile,
+  or custom Rich Presence for rotating scenes and editable statuses.
 </p>
 
 <p align="center">
@@ -21,19 +21,36 @@
   <a href="#choose-your-mode">Modes</a> ·
   <a href="#build-from-source">Build</a> ·
   <a href="#troubleshooting">Troubleshooting</a> ·
-  <a href="SECURITY.md">Security</a>
+  <a href="#privacy-and-security">Security</a>
 </p>
 
 > [!IMPORTANT]
 > This is an unofficial fan-made utility. It is not affiliated with, endorsed by, or sponsored by Rockstar Games, Take-Two Interactive, or Discord. It does not include GTA VI and is not evidence of access to a game build.
 
-## What it does
+## Why it feels like a real Discord game
+
+| What you see immediately | How it works |
+| --- | --- |
+| **Clickable game page** | In **Discord detection only** mode, Discord can match the running `GTA6.exe` to its own Game Profile. When that match is available, clicking the game title opens Discord's game page instead of a custom website. |
+| **Native, realistic presentation** | Discord renders the normal game card, icon, elapsed timer, hover behavior, profile link, and recent activity. The result looks like an ordinary detected game because this mode uses Discord's executable detection rather than a custom card. |
+
+Discord controls the Game Profile match on its servers. The app cannot force or guarantee the official page on every account, Discord version, executable path, or cache state; registering the running EXE exactly as shown in [Quick start](#quick-start) gives Discord the information it needs.
+
+## Proof: shown inside Discord
+
+<p align="center">
+  <img src="assets/discord-proof.png" alt="GTA VI-style activity displayed on Discord" width="448">
+</p>
+
+This screenshot shows the project running as a Discord activity. Small visual differences can occur between accounts and client versions because Discord controls the final layout and icon cache.
+
+## What you can customize
 
 The app can appear in Discord through normal executable detection or send a custom Rich Presence through your own Discord Application ID. It is designed for convincing presentation while keeping setup local, transparent, and reversible.
 
 | Highlight | What you get |
 | --- | --- |
-| Natural Discord detection | Discord controls the game card, hover behavior, profile link, and recent activity |
+| Natural Discord detection | Discord controls the game card, hover behavior, Game Profile link, and recent activity |
 | Session director | Ordered or manual activities with realistic timing |
 | Flexible rotation | Variable timing or fixed 1, 3, 5, 10, 15, or 30-minute intervals |
 | Character selection | Jason, Lucia, or combined play sessions |
@@ -41,6 +58,19 @@ The app can appear in Discord through normal executable detection or send a cust
 | Personal control | Custom status text and an optional `Join` URL button |
 | Persistent settings | Your selected mode and profile are restored on the next launch |
 | Minimal access | No Bot Token, Client Secret, Discord password, or administrator rights required |
+
+## Customizable session director
+
+The desktop menu lets each user build a session without editing code:
+
+- choose **Realistic Auto** for an ordered sequence with natural scene lengths, or switch to a manual activity;
+- filter the sequence for **Jason Duval**, **Lucia Caminos**, both characters, or automatic selection;
+- rotate scenes at realistic variable times or every **1, 3, 5, 10, 15, or 30 minutes**;
+- pick a suggested activity, skip to the next scene, or write a completely custom status;
+- optionally start with no description for five minutes and enable or disable the **Join** button;
+- keep preferences in the local saved profile so they are restored on the next launch.
+
+These controls belong to **Custom Rich Presence** mode. Leave **Discord detection only** enabled when the detected Discord Game Profile, clickable title, and recent activity are more important than custom text.
 
 ## Quick start
 
@@ -100,7 +130,7 @@ Skip this section if you only want Discord detection.
 3. Assign the asset key `gtavi_cover` before saving it.
 4. Save the asset and allow Discord a few minutes to update its cache.
 
-Discord does not let you rename a saved asset key. Delete and upload the image again if the key is wrong. The included cover is unofficial fan artwork; see [assets/README.md](assets/README.md).
+Discord does not let you rename a saved asset key. Delete and upload the image again if the key is wrong. The included cover is unofficial fan artwork; replace it with your own square image if preferred.
 
 ### Save the Application ID
 
@@ -186,9 +216,9 @@ Discord may hide an activity's URL buttons from its owner. Check the presence fr
 
 ## Privacy and security
 
-This is a desktop app, not a Discord bot. It talks only to the local Discord client through Rich Presence IPC and does not collect account passwords. Read [SECURITY.md](SECURITY.md) before publishing a fork.
+This is a desktop app, not a Discord bot. It talks only to the local Discord client through Rich Presence IPC, does not collect account passwords, and does not require administrator access.
 
-Application IDs and Public Keys are public identifiers. Bot Tokens and Client Secrets are private credentials and are never required by this project.
+Application IDs and Public Keys are public identifiers. Bot Tokens, Client Secrets, OAuth tokens, webhooks, Discord passwords, and session tokens are private credentials and are never required by this project. Never add them to configuration files or commits.
 
 ## Contributing
 

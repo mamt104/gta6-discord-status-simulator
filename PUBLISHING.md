@@ -57,7 +57,7 @@ Suggested release fields:
 
 ```text
 Tag: v1.1.0
-Title: GTA VI Discord Rich Presence v1.1.0
+Title: GTA VI Discord Status Simulator v1.1.0
 ```
 
 Calculate and publish the SHA-256 hash:

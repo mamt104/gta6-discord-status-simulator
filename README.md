@@ -2,7 +2,7 @@
   <img src="assets/hero.png" alt="Neon coastal skyline at dusk" width="100%">
 </p>
 
-<h1 align="center">GTA VI Discord Rich Presence</h1>
+<h1 align="center">GTA VI Discord Status Simulator</h1>
 
 <p align="center">
   A polished Windows presence simulator with Discord game detection, realistic activity rotation,
@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mamt104/gta6-discord-rich-presence/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/mamt104/gta6-discord-rich-presence?style=for-the-badge&color=ff4aa2"></a>
-  <a href="https://github.com/mamt104/gta6-discord-rich-presence/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-5b5bd6?style=for-the-badge"></a>
+  <a href="https://github.com/mamt104/gta6-discord-status-simulator/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/mamt104/gta6-discord-status-simulator?style=for-the-badge&color=ff4aa2"></a>
+  <a href="https://github.com/mamt104/gta6-discord-status-simulator/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-5b5bd6?style=for-the-badge"></a>
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-1877f2?style=for-the-badge&logo=windows">
   <img alt="No bot token required" src="https://img.shields.io/badge/Bot%20token-not%20required-35d07f?style=for-the-badge">
 </p>
@@ -46,7 +46,7 @@ The app can appear in Discord through normal executable detection or send a cust
 
 ### 1. Download and extract
 
-Download the latest package from [Releases](https://github.com/mamt104/gta6-discord-rich-presence/releases/latest), extract the entire ZIP, and keep all included files together.
+Download the latest package from [Releases](https://github.com/mamt104/gta6-discord-status-simulator/releases/latest), extract the entire ZIP, and keep all included files together.
 
 ### 2. Launch the fixed executable
 

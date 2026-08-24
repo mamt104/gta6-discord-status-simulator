@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/hero.png" alt="Neon coastal skyline at dusk" width="100%">
+  <img src="assets/hero-character.png" alt="GTA VI Discord Status banner with illustrated character" width="100%">
 </p>
 
 <h1 align="center">GTA VI Discord Status Simulator</h1>
@@ -96,11 +96,11 @@ Skip this section if you only want Discord detection.
 ### Add an image asset
 
 1. Open **Rich Presence → Art Assets** in your application.
-2. Upload a square PNG or JPG, preferably 1024 × 1024.
+2. Upload the included `assets/rich-presence-cover.png` file.
 3. Assign the asset key `gtavi_cover` before saving it.
-4. Use only artwork that you are allowed to upload or distribute.
+4. Save the asset and allow Discord a few minutes to update its cache.
 
-Discord does not let you rename a saved asset key. Delete and upload the image again if the key is wrong. Rockstar artwork is intentionally not included; see [assets/README.md](assets/README.md).
+Discord does not let you rename a saved asset key. Delete and upload the image again if the key is wrong. The included cover is unofficial fan artwork; see [assets/README.md](assets/README.md).
 
 ### Save the Application ID
 

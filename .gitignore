@@ -10,9 +10,9 @@ gta6-presence.txt
 gta6-profile.ini
 gta6-image.txt
 
-# User-provided artwork
-assets/app-icon.png
-assets/rich-presence-cover.png
+# Optional user-provided local artwork
+assets/local-*.png
+assets/local-*.jpg
 
 # IDE and operating-system files
 .vs/

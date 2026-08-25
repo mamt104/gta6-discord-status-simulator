@@ -28,6 +28,19 @@
 > [!IMPORTANT]
 > This is an unofficial fan-made utility. It is not affiliated with, endorsed by, or sponsored by Rockstar Games, Take-Two Interactive, or Discord. It does not include GTA VI and is not evidence of access to a game build.
 
+## Version 1.2.0 — complete workflow update
+
+The Windows build and public source now use the same tested implementation. The complete first-run flow, native Discord detection, Custom Rich Presence controls, saved settings, and live UI timers are working together in the packaged release. All core features documented below were rebuilt and checked for this update.
+
+- a built-in setup guide explains Discord registration and every main control;
+- Discord detection starts by default and clearly locks controls that cannot affect the native card;
+- the Application ID can be entered or changed directly in the app without rebuilding;
+- `CURRENT PRESENCE` counts down every second during the five-minute startup period and before scene changes;
+- the five-minute startup delay is enabled by default, while the optional activity button starts disabled;
+- **Add button → SET** edits both the button label and destination URL;
+- **RESET DEFAULTS** restores the label `Join` and the official Rockstar GTA VI pre-order page;
+- profiles remember custom text, rotation interval, character, activity-button settings, and other preferences.
+
 ## GTA 6 fake Discord status, without game files
 
 This GitHub project is made for anyone looking for a **GTA 6 fake Discord status**, a **GTA VI Rich Presence prank**, or a customizable fake game activity for Discord. It only changes the activity shown by Discord: it does not download, emulate, unlock, or include GTA VI.
@@ -60,8 +73,8 @@ The app can appear in Discord through normal executable detection or send a cust
 | Flexible rotation | Variable timing or fixed 1, 3, 5, 10, 15, or 30-minute intervals |
 | Character selection | Jason, Lucia, or combined play sessions |
 | Clean startup | Optional five-minute period without a description |
-| Personal control | Custom status text and an optional `Join` URL button |
-| Persistent settings | Your selected mode and profile are restored on the next launch |
+| Personal control | Custom status text and an optional activity button with editable label and URL |
+| Persistent settings | Your custom choices are saved; every launch starts safely in native Discord detection |
 | Minimal access | No Bot Token, Client Secret, Discord password, or administrator rights required |
 
 ## Customizable session director
@@ -72,7 +85,8 @@ The desktop menu lets each user build a session without editing code:
 - filter the sequence for **Jason Duval**, **Lucia Caminos**, both characters, or automatic selection;
 - rotate scenes at realistic variable times or every **1, 3, 5, 10, 15, or 30 minutes**;
 - pick a suggested activity, skip to the next scene, or write a completely custom status;
-- optionally start with no description for five minutes and enable or disable the **Join** button;
+- optionally start with no description for five minutes and enable or disable the custom activity button;
+- use **SET** to edit the activity button label and URL, or restore the `Join` default with **RESET DEFAULTS**;
 - keep preferences in the local saved profile so they are restored on the next launch.
 
 These controls belong to **Custom Rich Presence** mode. Leave **Discord detection only** enabled when the detected Discord Game Profile, clickable title, and recent activity are more important than custom text.
@@ -116,6 +130,8 @@ This registration step is required. Without it, Discord may display the wrong na
 
 **Custom Rich Presence** replaces the detected card. Discord can underline or make the complete `name + details + state` block clickable; the RPC protocol does not expose a setting that limits the clickable area to the game name.
 
+The custom activity button is shown to other Discord users, not on your own profile. Its default label is `Join` and its default destination is Rockstar's official GTA VI pre-order page. Both values can be changed or reset inside the app.
+
 ## Custom Rich Presence setup
 
 Skip this section if you only want Discord detection.
@@ -139,7 +155,9 @@ Discord does not let you rename a saved asset key. Delete and upload the image a
 
 ### Save the Application ID
 
-From PowerShell in the project folder:
+The easiest option is to disable **Discord game detection**, paste the Application ID into the app, and select **APPLY ID**. The value is saved locally beside the executable and can be changed later.
+
+Alternatively, from PowerShell in the project folder:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\configure.ps1
@@ -179,7 +197,7 @@ Run it with:
 .\run.ps1
 ```
 
-If you add an authorized square image as `assets\app-icon.png`, the build embeds it as the Windows executable icon.
+The included `assets\app-icon.png` is embedded as the Windows executable icon. You may replace it with another authorized square PNG before rebuilding.
 
 ## Troubleshooting
 

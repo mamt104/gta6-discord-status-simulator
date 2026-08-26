@@ -1,9 +1,11 @@
 using System;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.IO.Pipes;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -12,8 +14,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Grand Theft Auto VI")]
 [assembly: AssemblyCompany("Community Project")]
 [assembly: AssemblyProduct("Grand Theft Auto VI")]
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyVersion("1.3.3.0")]
+[assembly: AssemblyFileVersion("1.3.3.0")]
 
 internal static class Program
 {
@@ -22,19 +24,37 @@ internal static class Program
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new PresenceForm());
+        try
+        {
+            Application.Run(new PresenceForm());
+        }
+        catch (Exception error)
+        {
+            try
+            {
+                File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gta6-crash.log"), error.ToString());
+            }
+            catch { }
+            MessageBox.Show("GTA VI Presence Studio could not start.\r\n\r\n" + error.Message,
+                "Startup error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 }
 
 internal sealed class PresenceForm : Form
 {
     private const string DefaultAppId = "";
+    private const string RealisticAutoModeLabel = "Realistic Auto (Resume)";
     private const string DefaultActivityButtonLabel = "Join";
     private const string DefaultActivityButtonUrl = "https://store.rockstargames.com/game/buy-gta-vi";
     private readonly TextBox appIdBox;
     private readonly Label connectionLabel;
     private readonly Button connectButton;
-    private readonly CheckBox officialModeBox;
+    private readonly RadioButton officialModeBox;
+    private readonly RadioButton customModeBox;
+    private readonly CardPanel nativeModeCard;
+    private readonly CardPanel customModeCard;
+    private readonly Label customModeDescriptionLabel;
     private readonly CheckBox startupDelayBox;
     private readonly CheckBox joinGameBox;
     private readonly Button editJoinButton;
@@ -46,14 +66,28 @@ internal sealed class PresenceForm : Form
     private readonly ComboBox statusBox;
     private readonly ComboBox rotationIntervalBox;
     private readonly TextBox customStatusBox;
+    private readonly Label customCountLabel;
     private readonly Label currentStatusLabel;
     private readonly Label modeExplanationLabel;
     private readonly Label sessionHeaderLabel;
+    private readonly Label previewTitleLabel;
+    private readonly Label previewStateLabel;
+    private readonly Label previewDetailsLabel;
+    private readonly Label previewTimerLabel;
+    private readonly Label previewModeNoteLabel;
+    private readonly Label presenceModeValueLabel;
+    private readonly Label sessionModeValueLabel;
+    private readonly Label playingAsValueLabel;
+    private readonly Label activityValueLabel;
+    private readonly Label nextChangeValueLabel;
+    private readonly Label contextInfoLabel;
+    private readonly PictureBox previewImageBox;
     private readonly System.Windows.Forms.Timer uiCountdownTimer;
     private readonly NotifyIcon trayIcon;
     private readonly DiscordRpcClient rpc;
     private readonly string configPath;
     private readonly string profilePath;
+    private Action openSettingsPage;
     private bool exiting;
     private bool loadingProfile;
     private bool onboardingComplete;
@@ -61,23 +95,37 @@ internal sealed class PresenceForm : Form
     private string activeMode = "Auto";
     private string activeStatus = "";
     private string activeState = "";
-    private string activeSessionMode = "Realistic Auto";
+    private string activeSessionMode = RealisticAutoModeLabel;
     private string activeCharacter = "Automatic";
     private string activeJoinLabel = DefaultActivityButtonLabel;
     private string activeJoinUrl = DefaultActivityButtonUrl;
+    private string appliedApplicationId = "";
     private int activeRotationMinutes;
     private string currentActivityTemplate = "";
     private long currentActivityDeadline;
+    private long customSessionStarted;
+    private bool rpcConnected;
+
+    private const int EmSetCueBanner = 0x1501;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     public PresenceForm()
     {
         Text = "Grand Theft Auto VI";
-        ClientSize = new Size(760, 760);
+        ClientSize = new Size(1450, 900);
+        MinimumSize = new Size(1240, 780);
         StartPosition = FormStartPosition.CenterScreen;
-        FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
-        BackColor = Color.FromArgb(10, 9, 15);
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MaximizeBox = true;
+        AutoScaleMode = AutoScaleMode.Dpi;
+        BackColor = Color.FromArgb(8, 9, 14);
         ForeColor = Color.White;
+        Font = new Font("Segoe UI", 9.2f);
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
         configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gta6-presence.txt");
@@ -86,103 +134,401 @@ internal sealed class PresenceForm : Form
         rpc.StatusChanged += OnRpcStatusChanged;
         rpc.ActivityChanged += OnActivityChanged;
         uiCountdownTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-        uiCountdownTimer.Tick += delegate { UpdateCurrentStatusCountdown(); };
+        uiCountdownTimer.Tick += delegate { UpdateCurrentStatusCountdown(); RefreshDashboard(); };
         uiCountdownTimer.Start();
 
-        Color pink = Color.FromArgb(255, 70, 156);
-        Color orange = Color.FromArgb(255, 151, 62);
-        Color muted = Color.FromArgb(184, 181, 196);
-        Color card = Color.FromArgb(24, 22, 32);
+        Color pink = Color.FromArgb(235, 51, 145);
+        Color purple = Color.FromArgb(85, 82, 184);
+        Color orange = Color.FromArgb(230, 133, 16);
+        Color green = Color.FromArgb(70, 204, 105);
+        Color muted = Color.FromArgb(165, 165, 181);
+        Color card = Color.FromArgb(18, 19, 27);
+        Color cardRaised = Color.FromArgb(24, 25, 35);
+        Color field = Color.FromArgb(20, 21, 30);
+        Color border = Color.FromArgb(43, 44, 58);
 
-        Controls.Add(new Panel { Dock = DockStyle.Top, Height = 6, BackColor = pink });
-        Panel connectionCard = new Panel { Location = new Point(24, 151), Size = new Size(712, 144), BackColor = card };
-        Panel sessionCard = new Panel { Location = new Point(24, 298), Size = new Size(712, 300), BackColor = card };
-        Panel presenceCard = new Panel { Location = new Point(24, 613), Size = new Size(712, 80), BackColor = card };
-        Controls.Add(connectionCard);
-        Controls.Add(sessionCard);
-        Controls.Add(presenceCard);
-        Controls.Add(new Panel { Location = new Point(24, 151), Size = new Size(5, 144), BackColor = pink });
-        Controls.Add(new Panel { Location = new Point(24, 298), Size = new Size(5, 300), BackColor = orange });
-        Controls.Add(new Panel { Location = new Point(24, 613), Size = new Size(5, 80), BackColor = Color.FromArgb(63, 214, 127) });
-        Controls.Add(new Label
+        TableLayoutPanel root = new TableLayoutPanel
         {
-            Location = new Point(38, 22), Size = new Size(680, 54),
-            Text = "GTA  VI", Font = new Font("Arial Black", 29f, FontStyle.Bold),
-            ForeColor = Color.White
-        });
-        Controls.Add(new Label
-        {
-            Location = new Point(43, 76), Size = new Size(650, 28),
-            Text = "DISCORD PRESENCE STUDIO  /  COMMUNITY BUILD", Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold),
-            ForeColor = orange
-        });
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3,
+            BackColor = BackColor, Margin = Padding.Empty, Padding = Padding.Empty
+        };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        Controls.Add(root);
 
+        Panel header = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(9, 10, 16), Margin = Padding.Empty };
+        root.Controls.Add(header, 0, 0);
+        root.SetColumnSpan(header, 2);
+        header.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = border });
+        PictureBox headerIcon = new PictureBox
+        {
+            Location = new Point(17, 13), Size = new Size(32, 32), SizeMode = PictureBoxSizeMode.Zoom,
+            Image = LoadPreviewImage()
+        };
+        header.Controls.Add(headerIcon);
+        header.Controls.Add(new Label
+        {
+            Location = new Point(58, 3), Size = new Size(150, 33), Text = "GTA VI",
+            Font = new Font("Arial Black", 16f, FontStyle.Bold), ForeColor = Color.White,
+            BackColor = Color.Transparent
+        });
+        header.Controls.Add(new Label
+        {
+            Location = new Point(60, 36), Size = new Size(180, 18), Text = "PRESENCE STUDIO",
+            Font = new Font("Segoe UI Semibold", 8f, FontStyle.Bold), ForeColor = pink,
+            BackColor = Color.Transparent
+        });
         connectionLabel = new Label
         {
-            Location = new Point(43, 111), Size = new Size(650, 28),
-            Text = "●  Waiting for Discord detection", Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold),
-            ForeColor = muted
+            Location = new Point(900, 16), Size = new Size(510, 26), Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Text = "●  Native Discord Detection", TextAlign = ContentAlignment.MiddleRight,
+            Font = new Font("Segoe UI Semibold", 9.8f, FontStyle.Bold), ForeColor = green
         };
-        Controls.Add(connectionLabel);
+        header.Controls.Add(connectionLabel);
 
-        Controls.Add(new Label
+        Panel sidebar = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(10, 11, 18), Margin = Padding.Empty };
+        root.Controls.Add(sidebar, 0, 1);
+        sidebar.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 1, BackColor = border });
+        Panel activeRail = new Panel { Location = new Point(0, 14), Size = new Size(4, 82), BackColor = pink };
+        sidebar.Controls.Add(activeRail);
+        Button studioNav = MakeSidebarButton("STUDIO", new Point(8, 18), pink, true);
+        Button settingsNav = MakeSidebarButton("SETTINGS", new Point(8, 112), muted, false);
+        Button aboutNav = MakeSidebarButton("ABOUT", new Point(8, 206), muted, false);
+        sidebar.Controls.Add(studioNav);
+        sidebar.Controls.Add(settingsNav);
+        sidebar.Controls.Add(aboutNav);
+        Label sidebarState = new Label
         {
-            Location = new Point(43, 161), Size = new Size(650, 22), Text = "PRESENCE MODE",
-            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold), ForeColor = muted
+            Dock = DockStyle.Bottom, Height = 62, Padding = new Padding(16, 7, 6, 0),
+            Text = "●  READY\r\n    Local controls", Font = new Font("Segoe UI Semibold", 8.4f),
+            ForeColor = green
+        };
+        sidebar.Controls.Add(sidebarState);
+
+        TableLayoutPanel dashboard = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
+            BackColor = BackColor, Padding = new Padding(14, 12, 14, 8), Margin = Padding.Empty
+        };
+        dashboard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
+        dashboard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
+        root.Controls.Add(dashboard, 1, 1);
+
+        FlowLayoutPanel leftStack = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false,
+            AutoScroll = true, BackColor = BackColor, Padding = new Padding(0, 0, 6, 0), Margin = new Padding(0, 0, 7, 0)
+        };
+        FlowLayoutPanel rightStack = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false,
+            AutoScroll = true, BackColor = BackColor, Padding = new Padding(6, 0, 0, 0), Margin = new Padding(7, 0, 0, 0)
+        };
+        dashboard.Controls.Add(leftStack, 0, 0);
+        dashboard.Controls.Add(rightStack, 1, 0);
+
+        TableLayoutPanel settingsDashboard = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Visible = false,
+            BackColor = BackColor, Padding = new Padding(14, 12, 14, 8), Margin = Padding.Empty
+        };
+        settingsDashboard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        settingsDashboard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        root.Controls.Add(settingsDashboard, 1, 1);
+
+        FlowLayoutPanel settingsLeftStack = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false,
+            AutoScroll = true, BackColor = BackColor, Padding = new Padding(0, 0, 6, 0), Margin = new Padding(0, 0, 7, 0)
+        };
+        FlowLayoutPanel settingsRightStack = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false,
+            AutoScroll = true, BackColor = BackColor, Padding = new Padding(6, 0, 0, 0), Margin = new Padding(7, 0, 0, 0)
+        };
+        settingsDashboard.Controls.Add(settingsLeftStack, 0, 0);
+        settingsDashboard.Controls.Add(settingsRightStack, 1, 0);
+
+        TableLayoutPanel aboutDashboard = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Visible = false,
+            BackColor = BackColor, Padding = new Padding(14, 12, 14, 8), Margin = Padding.Empty
+        };
+        aboutDashboard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        aboutDashboard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        root.Controls.Add(aboutDashboard, 1, 1);
+
+        FlowLayoutPanel aboutLeftStack = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false,
+            AutoScroll = true, BackColor = BackColor, Padding = new Padding(0, 0, 6, 0), Margin = new Padding(0, 0, 7, 0)
+        };
+        FlowLayoutPanel aboutRightStack = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false,
+            AutoScroll = true, BackColor = BackColor, Padding = new Padding(6, 0, 0, 0), Margin = new Padding(7, 0, 0, 0)
+        };
+        aboutDashboard.Controls.Add(aboutLeftStack, 0, 0);
+        aboutDashboard.Controls.Add(aboutRightStack, 1, 0);
+
+        CardPanel aboutHeroCard = MakeCard(720, 190, card, border);
+        aboutHeroCard.AccentColor = pink;
+        aboutHeroCard.AccentWidth = 4;
+        aboutLeftStack.Controls.Add(aboutHeroCard);
+        aboutHeroCard.Controls.Add(MakeSectionTitle("ABOUT THE PROJECT", new Point(18, 14), pink));
+        aboutHeroCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 48), Size = new Size(650, 40), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "GTA VI PRESENCE STUDIO", Font = new Font("Arial Black", 18f, FontStyle.Bold), ForeColor = Color.White
         });
-        Controls.Add(new Label
+        aboutHeroCard.Controls.Add(new Label
         {
-            Location = new Point(43, 187), Size = new Size(650, 19),
-            Text = "APPLICATION ID — OPTIONAL, CUSTOM MODE ONLY", Font = new Font("Segoe UI Semibold", 8.4f, FontStyle.Bold),
-            ForeColor = muted
+            Location = new Point(18, 92), Size = new Size(650, 46), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "An open-source Windows utility for native Discord game detection and configurable GTA VI-style Rich Presence.",
+            Font = new Font("Segoe UI", 10.2f), ForeColor = muted
+        });
+        aboutHeroCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 147), Size = new Size(160, 27), Text = "VERSION 1.3.3",
+            TextAlign = ContentAlignment.MiddleCenter, BackColor = Color.FromArgb(29, 42, 37), ForeColor = green,
+            Font = new Font("Segoe UI Semibold", 9.2f, FontStyle.Bold)
+        });
+        aboutHeroCard.Controls.Add(new Label
+        {
+            Location = new Point(194, 147), Size = new Size(430, 27),
+            Text = "CREATED BY CYBERPINO  •  @MAMT104 ON GITHUB",
+            TextAlign = ContentAlignment.MiddleLeft, ForeColor = pink,
+            Font = new Font("Segoe UI Semibold", 8.8f, FontStyle.Bold)
+        });
+
+        CardPanel capabilitiesCard = MakeCard(720, 252, card, border);
+        capabilitiesCard.AccentColor = orange;
+        capabilitiesCard.AccentWidth = 4;
+        aboutLeftStack.Controls.Add(capabilitiesCard);
+        capabilitiesCard.Controls.Add(MakeSectionTitle("WHAT IT DOES", new Point(18, 14), orange));
+        capabilitiesCard.Controls.Add(MakeSettingsHint("NATIVE DETECTION", "Lets Discord manage the game card, icon, timer, click behavior and recent activity.", 52, green));
+        capabilitiesCard.Controls.Add(MakeSettingsHint("CUSTOM PRESENCE", "Unlocks scenes, characters, custom descriptions, rotation and an optional activity button.", 100, pink));
+        capabilitiesCard.Controls.Add(MakeSettingsHint("LOCAL PROFILES", "Saves your choices beside the executable so the next session is ready immediately.", 148, purple));
+        capabilitiesCard.Controls.Add(MakeSettingsHint("COMMUNITY BUILT", "Source, releases, feedback and bug reports are public on GitHub.", 196, orange));
+
+        CardPanel trustCard = MakeCard(720, 190, card, border);
+        trustCard.AccentColor = green;
+        trustCard.AccentWidth = 4;
+        aboutLeftStack.Controls.Add(trustCard);
+        trustCard.Controls.Add(MakeSectionTitle("LOCAL, TRANSPARENT, REVERSIBLE", new Point(18, 14), green));
+        trustCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 51), Size = new Size(660, 112), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "No Bot Token, Client Secret, Discord password or administrator access is required.\r\n\r\nThis is an unofficial fan-made utility. It does not include GTA VI, modify Discord, or prove access to a game build.",
+            Font = new Font("Segoe UI", 9.5f), ForeColor = Color.White
+        });
+
+        const string ProjectUrl = "https://github.com/mamt104/gta6-discord-status-simulator";
+        CardPanel supportCard = MakeCard(500, 292, card, border);
+        supportCard.AccentColor = pink;
+        supportCard.AccentWidth = 4;
+        aboutRightStack.Controls.Add(supportCard);
+        supportCard.Controls.Add(MakeSectionTitle("SUPPORT THE PROJECT", new Point(18, 14), pink));
+        supportCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 52), Size = new Size(452, 34), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "ENJOYING THE STUDIO?", Font = new Font("Segoe UI Semibold", 14f, FontStyle.Bold), ForeColor = Color.White
+        });
+        supportCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 91), Size = new Size(452, 70), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "A GitHub star helps other people discover it. Sharing the project with a friend helps even more.",
+            Font = new Font("Segoe UI", 9.7f), ForeColor = muted
+        });
+        Button starButton = MakeButton("STAR ON GITHUB", new Point(18, 174), 215, pink);
+        starButton.Click += delegate { Process.Start(ProjectUrl); };
+        supportCard.Controls.Add(starButton);
+        Button copyProjectButton = MakeButton("COPY PROJECT LINK", new Point(245, 174), 225, purple);
+        copyProjectButton.Click += delegate
+        {
+            try
+            {
+                Clipboard.SetText(ProjectUrl);
+                MessageBox.Show("Project link copied. Thanks for sharing it!", "Link copied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch { MessageBox.Show(ProjectUrl, "Project link", MessageBoxButtons.OK, MessageBoxIcon.Information); }
+        };
+        supportCard.Controls.Add(copyProjectButton);
+        supportCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 230), Size = new Size(452, 40), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Open the repository, press Star in the top-right corner, or send the copied link to someone who would enjoy it.",
+            Font = new Font("Segoe UI", 8.6f), ForeColor = green
+        });
+
+        CardPanel feedbackCard = MakeCard(500, 222, card, border);
+        feedbackCard.AccentColor = purple;
+        feedbackCard.AccentWidth = 4;
+        aboutRightStack.Controls.Add(feedbackCard);
+        feedbackCard.Controls.Add(MakeSectionTitle("FEEDBACK & IDEAS", new Point(18, 14), purple));
+        feedbackCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 51), Size = new Size(452, 64), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Suggest new scenes, UI improvements or future support for other games. Reproducible bugs belong in Issues.",
+            Font = new Font("Segoe UI", 9.5f), ForeColor = Color.White
+        });
+        Button feedbackButton = MakeButton("SHARE FEEDBACK", new Point(18, 136), 215, purple);
+        feedbackButton.Click += delegate { Process.Start(ProjectUrl + "/discussions/1"); };
+        feedbackCard.Controls.Add(feedbackButton);
+        Button issueButton = MakeButton("REPORT AN ISSUE", new Point(245, 136), 225, Color.FromArgb(50, 42, 50));
+        issueButton.Click += delegate { Process.Start(ProjectUrl + "/issues"); };
+        feedbackCard.Controls.Add(issueButton);
+
+        CardPanel licenseCard = MakeCard(500, 154, card, border);
+        licenseCard.AccentColor = green;
+        licenseCard.AccentWidth = 4;
+        aboutRightStack.Controls.Add(licenseCard);
+        licenseCard.Controls.Add(MakeSectionTitle("OPEN SOURCE", new Point(18, 14), green));
+        licenseCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 52), Size = new Size(452, 70), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Released under the MIT License. Questions, pull requests and community testing are welcome.",
+            Font = new Font("Segoe UI", 9.5f), ForeColor = muted
+        });
+
+        CardPanel settingsHeroCard = MakeCard(720, 106, card, border);
+        settingsHeroCard.AccentColor = pink;
+        settingsHeroCard.AccentWidth = 4;
+        settingsLeftStack.Controls.Add(settingsHeroCard);
+        settingsHeroCard.Controls.Add(MakeSectionTitle("SETTINGS", new Point(18, 14), pink));
+        settingsHeroCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 44), Size = new Size(670, 46), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Configure the Discord connection and startup behavior here. Changes are stored locally beside the executable.",
+            Font = new Font("Segoe UI", 9.4f), ForeColor = Color.White
+        });
+
+        CardPanel presenceModeCard = MakeCard(690, 138, card, border);
+        presenceModeCard.AccentColor = pink;
+        presenceModeCard.AccentWidth = 4;
+        leftStack.Controls.Add(presenceModeCard);
+        presenceModeCard.Controls.Add(MakeSectionTitle("PRESENCE MODE", new Point(18, 13), muted));
+
+        customModeCard = MakeCard(320, 78, cardRaised, border);
+        customModeCard.Location = new Point(18, 43);
+        customModeCard.Cursor = Cursors.Hand;
+        presenceModeCard.Controls.Add(customModeCard);
+        customModeBox = new RadioButton
+        {
+            Location = new Point(15, 16), Size = new Size(24, 24), Text = "", Checked = false,
+            AutoCheck = false, BackColor = cardRaised, ForeColor = pink
+        };
+        customModeCard.Controls.Add(customModeBox);
+        customModeCard.Controls.Add(new Label
+        {
+            Location = new Point(49, 11), Size = new Size(250, 24), Text = "Custom Rich Presence",
+            Font = new Font("Segoe UI Semibold", 10.8f, FontStyle.Bold), ForeColor = Color.White, BackColor = cardRaised
+        });
+        customModeDescriptionLabel = new Label
+        {
+            Location = new Point(49, 36), Size = new Size(252, 35),
+            Text = "LOCKED  •  Complete Application ID setup first.",
+            Font = new Font("Segoe UI Semibold", 8.5f, FontStyle.Bold), ForeColor = orange, BackColor = cardRaised
+        };
+        customModeCard.Controls.Add(customModeDescriptionLabel);
+
+        nativeModeCard = MakeCard(320, 78, cardRaised, border);
+        nativeModeCard.Location = new Point(352, 43);
+        nativeModeCard.Cursor = Cursors.Hand;
+        presenceModeCard.Controls.Add(nativeModeCard);
+        officialModeBox = new RadioButton
+        {
+            Location = new Point(15, 16), Size = new Size(24, 24), Text = "", Checked = true,
+            BackColor = cardRaised, ForeColor = green
+        };
+        nativeModeCard.Controls.Add(officialModeBox);
+        nativeModeCard.Controls.Add(new Label
+        {
+            Location = new Point(49, 11), Size = new Size(250, 24), Text = "Discord Game Detection",
+            Font = new Font("Segoe UI Semibold", 10.8f, FontStyle.Bold), ForeColor = Color.White, BackColor = cardRaised
+        });
+        nativeModeCard.Controls.Add(new Label
+        {
+            Location = new Point(49, 36), Size = new Size(252, 35),
+            Text = "Uses GTA6.exe and Discord Registered Games.",
+            Font = new Font("Segoe UI", 8.5f), ForeColor = muted, BackColor = cardRaised
+        });
+        customModeCard.Click += delegate { TryActivateCustomMode(); };
+        nativeModeCard.Click += delegate { officialModeBox.Checked = true; };
+        foreach (Control control in customModeCard.Controls) control.Click += delegate { TryActivateCustomMode(); };
+        foreach (Control control in nativeModeCard.Controls) control.Click += delegate { officialModeBox.Checked = true; };
+        officialModeBox.CheckedChanged += delegate
+        {
+            if (loadingProfile || !officialModeBox.Checked) return;
+            customModeBox.Checked = false;
+            officialModeEnabled = true;
+            ApplyPresenceMode();
+            SaveProfile();
+        };
+        customModeBox.CheckedChanged += delegate
+        {
+            if (loadingProfile || !customModeBox.Checked) return;
+            officialModeBox.Checked = false;
+            officialModeEnabled = false;
+            ApplyPresenceMode();
+            SaveProfile();
+        };
+        presenceModeCard.Resize += delegate
+        {
+            int gap = 14;
+            int optionWidth = Math.Max(250, (presenceModeCard.ClientSize.Width - 36 - gap) / 2);
+            customModeCard.SetBounds(18, 43, optionWidth, 78);
+            nativeModeCard.SetBounds(18 + optionWidth + gap, 43, optionWidth, 78);
+        };
+
+        CardPanel applicationCard = MakeCard(690, 160, card, border);
+        applicationCard.AccentColor = purple;
+        applicationCard.AccentWidth = 4;
+        settingsLeftStack.Controls.Add(applicationCard);
+        applicationCard.Controls.Add(MakeSectionTitle("APPLICATION SETTINGS", new Point(18, 13), muted));
+        applicationCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 43), Size = new Size(210, 19), Text = "DISCORD APPLICATION ID",
+            Font = new Font("Segoe UI Semibold", 8.2f, FontStyle.Bold), ForeColor = muted
         });
 
         appIdBox = new TextBox
         {
-            Location = new Point(43, 210), Size = new Size(390, 31),
-            Font = new Font("Consolas", 11.5f), BackColor = Color.FromArgb(34, 31, 44),
+            Location = new Point(18, 65), Size = new Size(410, 32), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Font = new Font("Consolas", 10.3f), BackColor = field,
             ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle
         };
         appIdBox.Leave += delegate { SaveApplicationIdDraft(); };
-        Controls.Add(appIdBox);
-
-        connectButton = MakeButton("APPLY ID", new Point(448, 208), 120, pink);
-        connectButton.Click += delegate { ConnectPresence(); };
-        Controls.Add(connectButton);
-
-        Button portalButton = MakeButton("PORTAL", new Point(583, 208), 120, Color.FromArgb(74, 79, 177));
-        portalButton.Click += delegate { Process.Start("https://discord.com/developers/applications"); };
-        Controls.Add(portalButton);
-
-        officialModeBox = new CheckBox
-        {
-            Location = new Point(43, 250), Size = new Size(250, 24), Checked = true,
-            Text = "Discord game detection (official card)",
-            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(63, 214, 127), BackColor = card
-        };
-        officialModeBox.CheckedChanged += delegate
+        appIdBox.TextChanged += delegate
         {
             if (loadingProfile) return;
-            officialModeEnabled = officialModeBox.Checked;
+            if (customModeBox.Checked && !IsCustomSetupReady())
+            {
+                officialModeBox.Checked = true;
+                customModeBox.Checked = false;
+            }
             ApplyPresenceMode();
-            SaveProfile();
         };
-        Controls.Add(officialModeBox);
+        applicationCard.Controls.Add(appIdBox);
 
-        modeExplanationLabel = new Label
-        {
-            Location = new Point(43, 274), Size = new Size(660, 18),
-            Text = "", Font = new Font("Segoe UI Semibold", 8.2f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(63, 214, 127), BackColor = card
-        };
-        Controls.Add(modeExplanationLabel);
+        connectButton = MakeButton("APPLY ID", new Point(442, 63), 108, pink);
+        connectButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        connectButton.Click += delegate { ConnectPresence(); };
+        applicationCard.Controls.Add(connectButton);
+
+        Button portalButton = MakeButton("PORTAL", new Point(562, 63), 108, purple);
+        portalButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        portalButton.Click += delegate { Process.Start("https://discord.com/developers/applications"); };
+        applicationCard.Controls.Add(portalButton);
 
         startupDelayBox = new CheckBox
         {
-            Location = new Point(327, 250), Size = new Size(203, 24), Checked = true,
+            Location = new Point(18, 110), Size = new Size(210, 24), Checked = false,
             Text = "5-minute startup delay",
-            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 8.8f, FontStyle.Bold),
             ForeColor = Color.White, BackColor = card
         };
         startupDelayBox.CheckedChanged += delegate
@@ -190,13 +536,13 @@ internal sealed class PresenceForm : Form
             rpc.SetStartupDelayEnabled(startupDelayBox.Checked);
             SaveProfile();
         };
-        Controls.Add(startupDelayBox);
+        applicationCard.Controls.Add(startupDelayBox);
 
         joinGameBox = new CheckBox
         {
-            Location = new Point(535, 250), Size = new Size(92, 24), Checked = true,
-            Text = "Add button",
-            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
+            Location = new Point(275, 110), Size = new Size(176, 24), Checked = false,
+            Text = "Show custom button",
+            Font = new Font("Segoe UI Semibold", 8.8f, FontStyle.Bold),
             ForeColor = Color.White, BackColor = card
         };
         joinGameBox.CheckedChanged += delegate
@@ -204,91 +550,123 @@ internal sealed class PresenceForm : Form
             rpc.SetJoinButtonEnabled(joinGameBox.Checked);
             SaveProfile();
         };
-        Controls.Add(joinGameBox);
+        applicationCard.Controls.Add(joinGameBox);
 
-        editJoinButton = MakeButton("SET", new Point(635, 247), 68, Color.FromArgb(74, 79, 177));
-        editJoinButton.Size = new Size(68, 26);
-        editJoinButton.Font = new Font("Segoe UI Semibold", 8.2f, FontStyle.Bold);
+        editJoinButton = MakeButton("CONFIGURE", new Point(532, 105), 138, purple);
+        editJoinButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        editJoinButton.Size = new Size(138, 32);
         editJoinButton.Click += delegate { EditJoinButtonSettings(); };
-        Controls.Add(editJoinButton);
+        applicationCard.Controls.Add(editJoinButton);
+        Label buttonVisibilityNote = new Label
+        {
+            Location = new Point(275, 136), Size = new Size(395, 18), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Button is visible to other Discord users, not on your own profile.",
+            Font = new Font("Segoe UI", 7.9f), ForeColor = muted
+        };
+        applicationCard.Controls.Add(buttonVisibilityNote);
+        ToolTip tips = new ToolTip();
+        tips.SetToolTip(startupDelayBox, "Starts Custom Rich Presence without a description for the first five minutes.");
+        tips.SetToolTip(joinGameBox, "Adds a customizable URL button that other Discord users may see.");
 
+        CardPanel sessionCard = MakeCard(690, 394, card, border);
+        sessionCard.AccentColor = orange;
+        sessionCard.AccentWidth = 4;
+        leftStack.Controls.Add(sessionCard);
         sessionHeaderLabel = new Label
         {
-            Location = new Point(43, 308), Size = new Size(650, 22), Text = "SESSION DIRECTOR",
-            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold), ForeColor = orange
+            Location = new Point(18, 13), Size = new Size(360, 24), Text = "SESSION DIRECTOR",
+            Font = new Font("Segoe UI Semibold", 10.4f, FontStyle.Bold), ForeColor = orange, BackColor = card
         };
-        Controls.Add(sessionHeaderLabel);
-        Controls.Add(new Label
+        sessionCard.Controls.Add(sessionHeaderLabel);
+        Label modeLabel = new Label
         {
-            Location = new Point(43, 337), Size = new Size(315, 19), Text = "MODE",
+            Location = new Point(18, 46), Size = new Size(300, 19), Text = "MODE",
             Font = new Font("Segoe UI Semibold", 8.4f, FontStyle.Bold), ForeColor = muted
-        });
-        Controls.Add(new Label
+        };
+        Label characterLabel = new Label
         {
-            Location = new Point(390, 337), Size = new Size(315, 19), Text = "PLAYING AS",
+            Location = new Point(352, 46), Size = new Size(300, 19), Text = "PLAYING AS",
             Font = new Font("Segoe UI Semibold", 8.4f, FontStyle.Bold), ForeColor = muted
-        });
+        };
+        sessionCard.Controls.Add(modeLabel);
+        sessionCard.Controls.Add(characterLabel);
 
-        sessionModeBox = MakeComboBox(new Point(43, 360), 315);
+        sessionModeBox = MakeComboBox(new Point(18, 68), 318);
         sessionModeBox.Items.AddRange(new object[]
         {
-            "Realistic Auto", "Free Roam", "Story Mission", "Main Menu", "Paused", "Manual"
+            RealisticAutoModeLabel, "Free Roam", "Story Mission", "Main Menu", "Paused", "Manual"
         });
         sessionModeBox.SelectedIndex = 0;
-        Controls.Add(sessionModeBox);
+        sessionModeBox.SelectedIndexChanged += delegate { if (!loadingProfile) RefreshDashboard(); };
+        sessionCard.Controls.Add(sessionModeBox);
 
-        characterBox = MakeComboBox(new Point(390, 360), 315);
+        characterBox = MakeComboBox(new Point(352, 68), 318);
         characterBox.Items.AddRange(new object[] { "Automatic", "Jason Duval", "Lucia Caminos", "Jason & Lucia" });
         characterBox.SelectedIndex = 0;
-        Controls.Add(characterBox);
+        characterBox.SelectedIndexChanged += delegate { if (!loadingProfile) RefreshDashboard(); };
+        sessionCard.Controls.Add(characterBox);
 
-        Controls.Add(new Label
+        Label activityLabel = new Label
         {
-            Location = new Point(43, 405), Size = new Size(650, 19), Text = "ACTIVITY / SCENE",
+            Location = new Point(18, 112), Size = new Size(400, 19), Text = "ACTIVITY / SCENE",
             Font = new Font("Segoe UI Semibold", 8.4f, FontStyle.Bold), ForeColor = muted
-        });
-        statusBox = MakeComboBox(new Point(43, 428), 390);
+        };
+        sessionCard.Controls.Add(activityLabel);
+        statusBox = MakeComboBox(new Point(18, 134), 390);
         statusBox.Items.Add("Suggested activity for this mode");
         foreach (string activity in DiscordRpcClient.GetActivities()) statusBox.Items.Add(activity);
         statusBox.SelectedIndex = 0;
-        Controls.Add(statusBox);
+        sessionCard.Controls.Add(statusBox);
 
-        applyPresetButton = MakeButton("SET STATUS", new Point(448, 426), 120, pink);
+        applyPresetButton = MakeButton("SET STATUS", new Point(422, 132), 116, pink);
+        applyPresetButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         applyPresetButton.Click += delegate { ApplySessionProfile(); };
-        Controls.Add(applyPresetButton);
+        sessionCard.Controls.Add(applyPresetButton);
 
-        nextSceneButton = MakeButton("NEXT SCENE", new Point(583, 426), 120, Color.FromArgb(62, 59, 74));
+        nextSceneButton = MakeButton("NEXT SCENE", new Point(550, 132), 120, Color.FromArgb(44, 45, 58));
+        nextSceneButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         nextSceneButton.Click += delegate { AdvanceAutomaticScene(); };
-        Controls.Add(nextSceneButton);
+        sessionCard.Controls.Add(nextSceneButton);
 
-        Controls.Add(new Label
+        Label customLabel = new Label
         {
-            Location = new Point(43, 475), Size = new Size(650, 19), Text = "CUSTOM DESCRIPTION",
+            Location = new Point(18, 181), Size = new Size(300, 19), Text = "CUSTOM DESCRIPTION",
             Font = new Font("Segoe UI Semibold", 8.4f, FontStyle.Bold), ForeColor = muted
-        });
+        };
+        sessionCard.Controls.Add(customLabel);
+        customCountLabel = new Label
+        {
+            Location = new Point(330, 181), Size = new Size(78, 19), Text = "0 / 128",
+            TextAlign = ContentAlignment.MiddleRight, Font = new Font("Segoe UI", 8f), ForeColor = muted
+        };
+        sessionCard.Controls.Add(customCountLabel);
         customStatusBox = new TextBox
         {
-            Location = new Point(43, 498), Size = new Size(390, 31), MaxLength = 128,
-            Font = new Font("Segoe UI", 10.5f), BackColor = Color.FromArgb(34, 31, 44),
+            Location = new Point(18, 203), Size = new Size(520, 32), MaxLength = 128,
+            Font = new Font("Segoe UI", 10f), BackColor = field,
             ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle
         };
+        customStatusBox.HandleCreated += delegate { SendMessage(customStatusBox.Handle, EmSetCueBanner, (IntPtr)1, "Leave empty for automatic"); };
+        customStatusBox.TextChanged += delegate { customCountLabel.Text = customStatusBox.TextLength + " / 128"; };
         customStatusBox.KeyDown += delegate(object sender, KeyEventArgs args)
         {
             if (args.KeyCode == Keys.Enter) { ApplyCustomStatus(); args.SuppressKeyPress = true; }
         };
-        Controls.Add(customStatusBox);
+        sessionCard.Controls.Add(customStatusBox);
 
-        applyCustomButton = MakeButton("USE TEXT", new Point(448, 496), 120, orange);
+        applyCustomButton = MakeButton("USE TEXT", new Point(550, 201), 120, orange);
+        applyCustomButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         applyCustomButton.Click += delegate { ApplyCustomStatus(); };
-        Controls.Add(applyCustomButton);
+        sessionCard.Controls.Add(applyCustomButton);
 
-        Controls.Add(new Label
+        Label rotationLabel = new Label
         {
-            Location = new Point(43, 542), Size = new Size(315, 19), Text = "AUTO ROTATION",
+            Location = new Point(18, 251), Size = new Size(300, 19), Text = "AUTO ROTATION",
             Font = new Font("Segoe UI Semibold", 8.4f, FontStyle.Bold), ForeColor = muted
-        });
+        };
+        sessionCard.Controls.Add(rotationLabel);
 
-        rotationIntervalBox = MakeComboBox(new Point(43, 562), 315);
+        rotationIntervalBox = MakeComboBox(new Point(18, 273), 318);
         rotationIntervalBox.Items.AddRange(new object[]
         {
             "Realistic (variable)", "Every 1 minute", "Every 3 minutes", "Every 5 minutes",
@@ -301,46 +679,286 @@ internal sealed class PresenceForm : Form
             activeRotationMinutes = RotationMinutesFromSelection();
             rpc.SetRotationIntervalMinutes(activeRotationMinutes);
             SaveProfile();
+            RefreshDashboard();
         };
-        Controls.Add(rotationIntervalBox);
+        sessionCard.Controls.Add(rotationIntervalBox);
 
-        Controls.Add(new Label
+        Label rotationHelp = new Label
         {
-            Location = new Point(390, 542), Size = new Size(315, 42),
-            Text = "Realistic mode uses different scene lengths. A fixed interval starts after the next change.",
-            Font = new Font("Segoe UI", 8.7f), ForeColor = muted
-        });
+            Location = new Point(352, 263), Size = new Size(318, 48),
+            Text = "Resumes your last automatic scene after relaunch.\r\nVariable timing changes scenes naturally; NEXT SCENE skips ahead.",
+            Font = new Font("Segoe UI", 8.3f), ForeColor = muted
+        };
+        sessionCard.Controls.Add(rotationHelp);
 
-        Controls.Add(new Label
+        modeExplanationLabel = new Label
         {
-            Location = new Point(43, 622), Size = new Size(650, 19), Text = "CURRENT PRESENCE",
-            Font = new Font("Segoe UI Semibold", 8.4f, FontStyle.Bold), ForeColor = Color.FromArgb(63, 214, 127)
+            Location = new Point(18, 326), Size = new Size(652, 42), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Padding = new Padding(11, 7, 8, 0), Text = "", BackColor = Color.FromArgb(25, 26, 36),
+            Font = new Font("Segoe UI Semibold", 8.3f, FontStyle.Bold), ForeColor = green
+        };
+        sessionCard.Controls.Add(modeExplanationLabel);
+        sessionCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 371), Size = new Size(652, 17), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Settings are saved automatically.", Font = new Font("Segoe UI", 7.8f), ForeColor = Color.FromArgb(119, 119, 134)
         });
+        sessionCard.Resize += delegate
+        {
+            int gap = 16;
+            int half = Math.Max(240, (sessionCard.ClientSize.Width - 36 - gap) / 2);
+            modeLabel.Width = half;
+            sessionModeBox.Width = half;
+            characterLabel.Left = 18 + half + gap;
+            characterLabel.Width = half;
+            characterBox.Left = characterLabel.Left;
+            characterBox.Width = half;
+            statusBox.Width = Math.Max(230, sessionCard.ClientSize.Width - 18 - 132 - 128 - 28);
+            applyPresetButton.Left = sessionCard.ClientSize.Width - 248;
+            nextSceneButton.Left = sessionCard.ClientSize.Width - 120 - 18;
+            customStatusBox.Width = Math.Max(300, sessionCard.ClientSize.Width - 18 - 120 - 30);
+            applyCustomButton.Left = sessionCard.ClientSize.Width - 120 - 18;
+            customCountLabel.Left = customStatusBox.Right - customCountLabel.Width;
+            rotationIntervalBox.Width = half;
+            rotationHelp.Left = 18 + half + gap;
+            rotationHelp.Width = half;
+        };
+
+        CardPanel connectionShortcutCard = MakeCard(690, 112, card, border);
+        connectionShortcutCard.AccentColor = purple;
+        connectionShortcutCard.AccentWidth = 4;
+        leftStack.Controls.Add(connectionShortcutCard);
+        connectionShortcutCard.Controls.Add(MakeSectionTitle("CONNECTION", new Point(18, 14), purple));
+        connectionShortcutCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 45), Size = new Size(470, 44), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Application ID, startup delay and the optional Discord button are managed in Settings.",
+            Font = new Font("Segoe UI", 8.8f), ForeColor = muted
+        });
+        Button openSettingsButton = MakeButton("OPEN SETTINGS", new Point(526, 44), 144, purple);
+        openSettingsButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        openSettingsButton.Click += delegate { settingsNav.PerformClick(); };
+        connectionShortcutCard.Controls.Add(openSettingsButton);
+
+        CardPanel previewCard = MakeCard(550, 326, card, border);
+        previewCard.AccentColor = purple;
+        previewCard.AccentWidth = 4;
+        rightStack.Controls.Add(previewCard);
+        previewCard.Controls.Add(MakeSectionTitle("DISCORD PREVIEW", new Point(18, 13), Color.White));
+        Label livePreviewLabel = new Label
+        {
+            Location = new Point(166, 13), Size = new Size(130, 22), Text = "●  Live preview",
+            Font = new Font("Segoe UI", 8.5f), ForeColor = green
+        };
+        previewCard.Controls.Add(livePreviewLabel);
+        CardPanel discordCard = MakeCard(514, 264, Color.FromArgb(30, 31, 39), Color.FromArgb(38, 39, 50));
+        discordCard.Location = new Point(18, 47);
+        previewCard.Controls.Add(discordCard);
+        discordCard.Controls.Add(new Label
+        {
+            Location = new Point(20, 18), Size = new Size(150, 26), Text = "Playing",
+            Font = new Font("Segoe UI Semibold", 10.5f, FontStyle.Bold), ForeColor = Color.White
+        });
+        discordCard.Controls.Add(new Label
+        {
+            Location = new Point(462, 15), Size = new Size(35, 26), Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Text = "•••", Font = new Font("Segoe UI Semibold", 11f), ForeColor = muted, TextAlign = ContentAlignment.MiddleRight
+        });
+        previewImageBox = new PictureBox
+        {
+            Location = new Point(22, 72), Size = new Size(120, 120), SizeMode = PictureBoxSizeMode.Zoom,
+            BackColor = Color.FromArgb(14, 15, 21), Image = LoadPreviewImage(), BorderStyle = BorderStyle.FixedSingle
+        };
+        discordCard.Controls.Add(previewImageBox);
+        previewTitleLabel = new Label
+        {
+            Location = new Point(164, 72), Size = new Size(326, 30), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Grand Theft Auto VI", Font = new Font("Segoe UI Semibold", 13f, FontStyle.Bold), ForeColor = Color.White
+        };
+        previewStateLabel = new Label
+        {
+            Location = new Point(164, 111), Size = new Size(326, 25), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Preview managed by Discord", Font = new Font("Segoe UI", 10.2f), ForeColor = Color.White, AutoEllipsis = true
+        };
+        previewDetailsLabel = new Label
+        {
+            Location = new Point(164, 143), Size = new Size(326, 25), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Discord controls the visible native game card.", Font = new Font("Segoe UI", 9.7f), ForeColor = muted, AutoEllipsis = true
+        };
+        previewTimerLabel = new Label
+        {
+            Location = new Point(164, 178), Size = new Size(326, 26), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "GTA6.exe • Registered Games", Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold), ForeColor = green
+        };
+        previewModeNoteLabel = new Label
+        {
+            Location = new Point(22, 215), Size = new Size(468, 34), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Preview managed by Discord — icon, timer, hover behavior and recent activity may differ.",
+            Font = new Font("Segoe UI", 8.2f), ForeColor = muted
+        };
+        discordCard.Controls.Add(previewTitleLabel);
+        discordCard.Controls.Add(previewStateLabel);
+        discordCard.Controls.Add(previewDetailsLabel);
+        discordCard.Controls.Add(previewTimerLabel);
+        discordCard.Controls.Add(previewModeNoteLabel);
+        previewCard.Resize += delegate { discordCard.Width = Math.Max(420, previewCard.ClientSize.Width - 36); };
+
+        CardPanel currentCard = MakeCard(550, 252, card, border);
+        currentCard.AccentColor = green;
+        currentCard.AccentWidth = 4;
+        rightStack.Controls.Add(currentCard);
+        currentCard.Controls.Add(MakeSectionTitle("CURRENT PRESENCE", new Point(18, 13), green));
         currentStatusLabel = new Label
         {
-            Location = new Point(43, 645), Size = new Size(650, 42),
-            Text = "Waiting for Discord", Font = new Font("Segoe UI Semibold", 10f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(255, 190, 80)
+            Location = new Point(18, 43), Size = new Size(514, 40), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Padding = new Padding(11, 9, 8, 0), Text = "Native detection active",
+            Font = new Font("Segoe UI Semibold", 9.3f, FontStyle.Bold), BackColor = Color.FromArgb(24, 31, 29), ForeColor = green
         };
-        Controls.Add(currentStatusLabel);
+        currentCard.Controls.Add(currentStatusLabel);
+        presenceModeValueLabel = AddInfoRow(currentCard, "Presence Mode", "Discord Game Detection", 94, muted);
+        sessionModeValueLabel = AddInfoRow(currentCard, "Session Mode", "—", 122, muted);
+        playingAsValueLabel = AddInfoRow(currentCard, "Playing As", "—", 150, muted);
+        activityValueLabel = AddInfoRow(currentCard, "Current Activity", "Discord controlled", 178, muted);
+        nextChangeValueLabel = AddInfoRow(currentCard, "Next Change", "—", 206, muted);
 
-        Button minimize = MakeButton("HIDE TO TRAY", new Point(43, 707), 185, pink);
+        CardPanel informationCard = MakeCard(550, 136, card, border);
+        rightStack.Controls.Add(informationCard);
+        informationCard.Controls.Add(MakeSectionTitle("INFORMATION", new Point(18, 13), Color.White));
+        contextInfoLabel = new Label
+        {
+            Location = new Point(18, 44), Size = new Size(514, 76), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Discord controls the native game card. Custom Rich Presence controls are locked and no Application ID is used.",
+            Font = new Font("Segoe UI", 9f), ForeColor = muted
+        };
+        informationCard.Controls.Add(contextInfoLabel);
+
+        CardPanel behaviorCard = MakeCard(720, 252, card, border);
+        behaviorCard.AccentColor = orange;
+        behaviorCard.AccentWidth = 4;
+        settingsLeftStack.Controls.Add(behaviorCard);
+        behaviorCard.Controls.Add(MakeSectionTitle("HOW THESE SETTINGS WORK", new Point(18, 14), orange));
+        behaviorCard.Controls.Add(MakeSettingsHint("APPLICATION ID", "Required only for Custom Rich Presence. It is a public identifier, not a token.", 48, pink));
+        behaviorCard.Controls.Add(MakeSettingsHint("STARTUP DELAY", "Optional realism: hides the description for five minutes while the timer keeps running.", 94, orange));
+        behaviorCard.Controls.Add(MakeSettingsHint("CUSTOM BUTTON", "Adds a link button visible to other Discord users, never on your own profile.", 140, purple));
+        behaviorCard.Controls.Add(MakeSettingsHint("AUTOMATIC SAVE", "Mode, scene rotation and button configuration are restored on the next launch.", 186, green));
+
+        CardPanel modeReferenceCard = MakeCard(500, 286, card, border);
+        modeReferenceCard.AccentColor = purple;
+        modeReferenceCard.AccentWidth = 4;
+        settingsRightStack.Controls.Add(modeReferenceCard);
+        modeReferenceCard.Controls.Add(MakeSectionTitle("MODE REFERENCE", new Point(18, 14), Color.White));
+        modeReferenceCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 48), Size = new Size(454, 20), Text = "DISCORD GAME DETECTION",
+            Font = new Font("Segoe UI Semibold", 8.8f, FontStyle.Bold), ForeColor = green
+        });
+        modeReferenceCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 70), Size = new Size(454, 50), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Uses GTA6.exe and Discord Registered Games. Discord owns the card, icon, click behavior and recent activity.",
+            Font = new Font("Segoe UI", 8.6f), ForeColor = muted
+        });
+        modeReferenceCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 134), Size = new Size(454, 20), Text = "CUSTOM RICH PRESENCE",
+            Font = new Font("Segoe UI Semibold", 8.8f, FontStyle.Bold), ForeColor = pink
+        });
+        modeReferenceCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 156), Size = new Size(454, 64), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Uses your Application ID. Session Director, custom text, rotation and the optional link button become editable.",
+            Font = new Font("Segoe UI", 8.6f), ForeColor = muted
+        });
+        modeReferenceCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 235), Size = new Size(454, 32), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Fresh installs start safely in Discord Game Detection until a valid Application ID is configured.",
+            Font = new Font("Segoe UI", 8.3f), ForeColor = muted
+        });
+
+        CardPanel localDataCard = MakeCard(500, 188, card, border);
+        localDataCard.AccentColor = green;
+        localDataCard.AccentWidth = 4;
+        settingsRightStack.Controls.Add(localDataCard);
+        localDataCard.Controls.Add(MakeSectionTitle("LOCAL & PRIVATE", new Point(18, 14), green));
+        localDataCard.Controls.Add(new Label
+        {
+            Location = new Point(18, 48), Size = new Size(454, 112), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Settings are stored beside GTA6.exe.\r\n\r\nThe app never needs a Bot Token, Client Secret, Discord password or administrator access.\r\n\r\nClosing the window keeps the app in the system tray.",
+            Font = new Font("Segoe UI", 9f), ForeColor = Color.White
+        });
+
+        leftStack.SizeChanged += delegate { ResizeStackCards(leftStack, 600); };
+        rightStack.SizeChanged += delegate { ResizeStackCards(rightStack, 450); };
+        settingsLeftStack.SizeChanged += delegate { ResizeStackCards(settingsLeftStack, 620); };
+        settingsRightStack.SizeChanged += delegate { ResizeStackCards(settingsRightStack, 430); };
+        aboutLeftStack.SizeChanged += delegate { ResizeStackCards(aboutLeftStack, 620); };
+        aboutRightStack.SizeChanged += delegate { ResizeStackCards(aboutRightStack, 430); };
+
+        Panel footer = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(9, 10, 16), Margin = Padding.Empty };
+        root.Controls.Add(footer, 0, 2);
+        root.SetColumnSpan(footer, 2);
+        footer.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 1, BackColor = border });
+        Label footerStatus = new Label
+        {
+            Location = new Point(18, 20), Size = new Size(590, 28), Text = "●  READY  •  by Cyberpino  •  settings save automatically",
+            Font = new Font("Segoe UI Semibold", 8.4f), ForeColor = green
+        };
+        footer.Controls.Add(footerStatus);
+        Button minimize = MakeButton("HIDE TO TRAY", new Point(900, 15), 160, Color.FromArgb(39, 40, 52));
+        minimize.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         minimize.Click += delegate { HideToTray(); };
-        Controls.Add(minimize);
-
-        Button recentHelp = MakeButton("SETUP GUIDE", new Point(243, 707), 170, Color.FromArgb(74, 79, 177));
+        footer.Controls.Add(minimize);
+        Button recentHelp = MakeButton("SETUP GUIDE", new Point(1072, 15), 160, purple);
+        recentHelp.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         recentHelp.Click += delegate { ShowRecentGamesHelp(); };
-        Controls.Add(recentHelp);
-
-        Button exit = MakeButton("EXIT", new Point(428, 707), 110, Color.FromArgb(62, 59, 74));
+        footer.Controls.Add(recentHelp);
+        Button exit = MakeButton("EXIT", new Point(1244, 15), 160, Color.FromArgb(50, 42, 50));
+        exit.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         exit.Click += delegate { exiting = true; Close(); };
-        Controls.Add(exit);
+        footer.Controls.Add(exit);
 
-        // Decorative panels are siblings of the controls. Keep them at the
-        // back of the Z-order so Windows cannot cover menus or input fields.
-        connectionCard.SendToBack();
-        sessionCard.SendToBack();
-        presenceCard.SendToBack();
+        Action<Button> activateNavigation = delegate(Button activeButton)
+        {
+            foreach (Button navigationButton in new[] { studioNav, settingsNav, aboutNav })
+            {
+                bool selected = navigationButton == activeButton;
+                navigationButton.BackColor = selected ? Color.FromArgb(31, 20, 36) : Color.FromArgb(10, 11, 18);
+                navigationButton.ForeColor = selected ? pink : muted;
+                Image previousIcon = navigationButton.Image;
+                navigationButton.Image = MakeSidebarIcon(navigationButton.Tag == null ? navigationButton.Text : navigationButton.Tag.ToString(),
+                    selected ? pink : muted);
+                if (previousIcon != null) previousIcon.Dispose();
+            }
+        };
+        studioNav.Click += delegate
+        {
+            activateNavigation(studioNav);
+            settingsDashboard.Visible = false;
+            aboutDashboard.Visible = false;
+            dashboard.Visible = true;
+            dashboard.BringToFront();
+            activeRail.Top = 14;
+        };
+        openSettingsPage = delegate
+        {
+            activateNavigation(settingsNav);
+            dashboard.Visible = false;
+            aboutDashboard.Visible = false;
+            settingsDashboard.Visible = true;
+            settingsDashboard.BringToFront();
+            activeRail.Top = 108;
+        };
+        settingsNav.Click += delegate { openSettingsPage(); };
+        aboutNav.Click += delegate
+        {
+            activateNavigation(aboutNav);
+            dashboard.Visible = false;
+            settingsDashboard.Visible = false;
+            aboutDashboard.Visible = true;
+            aboutDashboard.BringToFront();
+            activeRail.Top = 202;
+        };
 
         trayIcon = new NotifyIcon { Icon = Icon, Text = "GTA VI Rich Presence", Visible = true };
         ContextMenuStrip trayMenu = new ContextMenuStrip();
@@ -370,29 +988,311 @@ internal sealed class PresenceForm : Form
 
         LoadProfile();
         LoadSavedId();
+        ResizeStackCards(leftStack, 600);
+        ResizeStackCards(rightStack, 450);
+        ResizeStackCards(settingsLeftStack, 620);
+        ResizeStackCards(settingsRightStack, 430);
+        ResizeStackCards(aboutLeftStack, 620);
+        ResizeStackCards(aboutRightStack, 430);
+        RefreshDashboard();
         Shown += delegate { BeginInvoke(new MethodInvoker(ShowFirstRunGuideIfNeeded)); };
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        try
+        {
+            int enabled = 1;
+            DwmSetWindowAttribute(Handle, 20, ref enabled, sizeof(int));
+            DwmSetWindowAttribute(Handle, 19, ref enabled, sizeof(int));
+        }
+        catch { }
+    }
+
+    private static CardPanel MakeCard(int width, int height, Color background, Color borderColor)
+    {
+        return new CardPanel
+        {
+            Size = new Size(width, height), BackColor = background, BorderColor = borderColor,
+            BorderRadius = 10, BorderThickness = 1, Margin = new Padding(0, 0, 0, 12)
+        };
+    }
+
+    private static Label MakeSectionTitle(string text, Point location, Color color)
+    {
+        return new Label
+        {
+            Location = location, Size = new Size(400, 26), Text = text,
+            Font = new Font("Segoe UI Semibold", 10.2f, FontStyle.Bold), ForeColor = color,
+            BackColor = Color.Transparent
+        };
+    }
+
+    private static Panel MakeSettingsHint(string title, string description, int top, Color accent)
+    {
+        Panel block = new Panel
+        {
+            Location = new Point(18, top), Size = new Size(650, 40),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            BackColor = Color.Transparent
+        };
+        block.Controls.Add(new Label
+        {
+            Location = new Point(0, 0), Size = new Size(180, 18), Text = title,
+            Font = new Font("Segoe UI Semibold", 8.4f, FontStyle.Bold), ForeColor = accent,
+            BackColor = Color.Transparent
+        });
+        block.Controls.Add(new Label
+        {
+            Location = new Point(0, 18), Size = new Size(640, 20), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = description, Font = new Font("Segoe UI", 8.3f),
+            ForeColor = Color.FromArgb(165, 165, 181), BackColor = Color.Transparent
+        });
+        return block;
+    }
+
+    private static Button MakeSidebarButton(string text, Point location, Color color, bool active)
+    {
+        Button button = new Button
+        {
+            Location = location, Size = new Size(102, 76), Text = text,
+            FlatStyle = FlatStyle.Flat, BackColor = active ? Color.FromArgb(31, 20, 36) : Color.FromArgb(10, 11, 18),
+            ForeColor = color, Font = new Font("Segoe UI Semibold", 8.2f, FontStyle.Bold),
+            Cursor = Cursors.Hand, TextAlign = ContentAlignment.BottomCenter,
+            Image = MakeSidebarIcon(text, color), ImageAlign = ContentAlignment.TopCenter,
+            TextImageRelation = TextImageRelation.ImageAboveText, Padding = new Padding(0, 8, 0, 7), Tag = text
+        };
+        button.FlatAppearance.BorderSize = 0;
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(27, 27, 38);
+        button.FlatAppearance.MouseDownBackColor = Color.FromArgb(35, 29, 43);
+        return button;
+    }
+
+    private static Bitmap MakeSidebarIcon(string kind, Color color)
+    {
+        Bitmap bitmap = new Bitmap(26, 26);
+        using (Graphics graphics = Graphics.FromImage(bitmap))
+        using (Pen pen = new Pen(color, 2f))
+        {
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            pen.StartCap = LineCap.Round;
+            pen.EndCap = LineCap.Round;
+            if (kind == "STUDIO")
+            {
+                graphics.DrawLines(pen, new[] { new Point(3, 12), new Point(13, 3), new Point(23, 12) });
+                graphics.DrawRectangle(pen, 6, 11, 14, 11);
+                graphics.DrawLine(pen, 13, 16, 13, 22);
+            }
+            else if (kind == "SETTINGS")
+            {
+                graphics.DrawEllipse(pen, 7, 7, 12, 12);
+                graphics.DrawEllipse(pen, 11, 11, 4, 4);
+                for (int angle = 0; angle < 360; angle += 45)
+                {
+                    double radians = angle * Math.PI / 180.0;
+                    Point inner = new Point(13 + (int)(8 * Math.Cos(radians)), 13 + (int)(8 * Math.Sin(radians)));
+                    Point outer = new Point(13 + (int)(11 * Math.Cos(radians)), 13 + (int)(11 * Math.Sin(radians)));
+                    graphics.DrawLine(pen, inner, outer);
+                }
+            }
+            else
+            {
+                graphics.DrawEllipse(pen, 3, 3, 20, 20);
+                graphics.DrawLine(pen, 13, 11, 13, 19);
+                graphics.DrawEllipse(pen, 12, 7, 2, 2);
+            }
+        }
+        return bitmap;
+    }
+
+    private static void ResizeStackCards(FlowLayoutPanel stack, int minimumWidth)
+    {
+        if (stack == null || stack.IsDisposed) return;
+        int available = stack.ClientSize.Width - stack.Padding.Horizontal - 5;
+        if (stack.VerticalScroll.Visible) available -= SystemInformation.VerticalScrollBarWidth;
+        int width = Math.Max(minimumWidth, available);
+        foreach (Control control in stack.Controls)
+            control.Width = width;
+    }
+
+    private static Label AddInfoRow(Control parent, string name, string value, int top, Color muted)
+    {
+        parent.Controls.Add(new Panel
+        {
+            Location = new Point(18, top - 7), Size = new Size(parent.ClientSize.Width - 36, 1),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            BackColor = Color.FromArgb(39, 40, 51)
+        });
+        parent.Controls.Add(new Label
+        {
+            Location = new Point(18, top), Size = new Size(180, 22), Text = name,
+            Font = new Font("Segoe UI", 8.8f), ForeColor = muted
+        });
+        Label result = new Label
+        {
+            Location = new Point(202, top), Size = new Size(parent.ClientSize.Width - 220, 22),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = value, TextAlign = ContentAlignment.MiddleRight, AutoEllipsis = true,
+            Font = new Font("Segoe UI Semibold", 8.8f), ForeColor = Color.White
+        };
+        parent.Controls.Add(result);
+        return result;
+    }
+
+    private static Image LoadPreviewImage()
+    {
+        try
+        {
+            using (Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("GtaViPreview.png"))
+            {
+                if (stream != null)
+                {
+                    using (Image image = Image.FromStream(stream)) return new Bitmap(image);
+                }
+            }
+        }
+        catch { }
+
+        try
+        {
+            using (Icon icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath))
+                return icon == null ? new Bitmap(1, 1) : icon.ToBitmap();
+        }
+        catch { return new Bitmap(1, 1); }
+    }
+
+    private void ApplyModeCardVisuals()
+    {
+        if (nativeModeCard == null || customModeCard == null) return;
+        Color neutral = Color.FromArgb(43, 44, 58);
+        Color orange = Color.FromArgb(255, 151, 62);
+        bool customReady = IsCustomSetupReady();
+        nativeModeCard.BorderColor = officialModeBox.Checked ? Color.FromArgb(70, 204, 105) : neutral;
+        customModeCard.BorderColor = !customReady ? orange : (customModeBox.Checked ? Color.FromArgb(235, 51, 145) : neutral);
+        nativeModeCard.BorderThickness = officialModeBox.Checked ? 2 : 1;
+        customModeCard.BorderThickness = customModeBox.Checked || !customReady ? 2 : 1;
+        customModeCard.Cursor = customReady ? Cursors.Hand : Cursors.Help;
+        customModeDescriptionLabel.Text = customReady
+            ? "READY  •  Custom scenes, rotation and activity button."
+            : "LOCKED  •  Create and apply a Discord Application ID.";
+        customModeDescriptionLabel.ForeColor = customReady ? Color.FromArgb(184, 181, 196) : orange;
+        nativeModeCard.Invalidate();
+        customModeCard.Invalidate();
+    }
+
+    private void TryActivateCustomMode()
+    {
+        if (!IsCustomSetupReady())
+        {
+            ShowCustomModeGuide();
+            return;
+        }
+        customModeBox.Checked = true;
+    }
+
+    private bool IsCustomSetupReady()
+    {
+        string enteredId = appIdBox == null ? "" : appIdBox.Text.Trim();
+        return IsValidAppId(enteredId) && string.Equals(enteredId, appliedApplicationId, StringComparison.Ordinal);
+    }
+
+    private void RefreshDashboard()
+    {
+        if (previewTitleLabel == null || IsDisposed) return;
+        ApplyModeCardVisuals();
+
+        Color green = Color.FromArgb(70, 204, 105);
+        Color muted = Color.FromArgb(165, 165, 181);
+        if (officialModeEnabled)
+        {
+            previewTitleLabel.Text = "Native Discord Game Card";
+            previewStateLabel.Text = "Preview managed by Discord";
+            previewDetailsLabel.Text = "Discord controls the final icon, timer and recent activity.";
+            previewTimerLabel.Text = "GTA6.exe  •  Registered Games";
+            previewModeNoteLabel.Text = "Native mode is detected from the running executable. Custom session data is not being sent.";
+            currentStatusLabel.Text = "Native detection active  •  Discord RPC is off";
+            currentStatusLabel.ForeColor = green;
+            currentStatusLabel.BackColor = Color.FromArgb(24, 31, 29);
+            presenceModeValueLabel.Text = "Discord Game Detection";
+            sessionModeValueLabel.Text = "—";
+            playingAsValueLabel.Text = "—";
+            activityValueLabel.Text = "Discord controlled";
+            nextChangeValueLabel.Text = "—";
+            contextInfoLabel.Text = "Discord controls the native game card. Custom Rich Presence controls are visible but locked, and the Application ID is not used.";
+            return;
+        }
+
+        string state = activeState;
+        string details = activeStatus;
+        string liveText = currentStatusLabel.Text ?? "";
+        string[] lines = liveText.Replace("\r", "").Split('\n');
+        if (lines.Length > 0 && lines[0].Trim().Length > 0) state = lines[0].Trim();
+        if (lines.Length > 1 && lines[1].Trim().Length > 0) details = TrimActivityTiming(lines[1].Trim());
+        if (string.IsNullOrWhiteSpace(state)) state = BuildStateForSelection();
+        if (string.IsNullOrWhiteSpace(details)) details = "Waiting for the first activity";
+
+        previewTitleLabel.Text = "Grand Theft Auto VI";
+        previewStateLabel.Text = state;
+        previewDetailsLabel.Text = details;
+        long elapsed = customSessionStarted <= 0 ? 0 : Math.Max(0, UiUnixNow() - customSessionStarted);
+        previewTimerLabel.Text = "●  " + FormatUiCountdown(elapsed);
+        previewModeNoteLabel.Text = "Read-only preview. Discord controls exact spacing and may hide your activity button on your own profile.";
+        presenceModeValueLabel.Text = rpcConnected ? "Custom Rich Presence" : "Custom mode — connecting";
+        sessionModeValueLabel.Text = sessionModeBox.SelectedItem == null ? activeSessionMode : sessionModeBox.SelectedItem.ToString();
+        playingAsValueLabel.Text = characterBox.SelectedItem == null ? activeCharacter : characterBox.SelectedItem.ToString();
+        activityValueLabel.Text = details;
+        nextChangeValueLabel.Text = currentActivityDeadline > 0
+            ? FormatUiCountdown(Math.Max(0, currentActivityDeadline - UiUnixNow()))
+            : (activeMode == "Auto" ? "Pending" : "Manual");
+        contextInfoLabel.Text = rpcConnected
+            ? "Custom Rich Presence is connected. Session Director changes update this read-only preview and are saved automatically."
+            : "Enter a valid Discord Application ID and press APPLY ID. Native Discord card features are unavailable in custom mode.";
+        activityValueLabel.ForeColor = Color.White;
+        nextChangeValueLabel.ForeColor = currentActivityDeadline > 0 ? green : muted;
+    }
+
+    private static string TrimActivityTiming(string value)
+    {
+        int marker = value.IndexOf("  •  changes in ", StringComparison.OrdinalIgnoreCase);
+        if (marker < 0) marker = value.IndexOf("  •  manual", StringComparison.OrdinalIgnoreCase);
+        return marker > 0 ? value.Substring(0, marker).Trim() : value;
     }
 
     private void LoadSavedId()
     {
+        bool previousLoadingState = loadingProfile;
         try
         {
-            appIdBox.Text = DefaultAppId;
+            loadingProfile = true;
+            string savedId = DefaultAppId;
             if (File.Exists(configPath))
-                appIdBox.Text = File.ReadAllText(configPath).Trim();
-            ApplyPresenceMode();
+                savedId = File.ReadAllText(configPath).Trim();
+            appliedApplicationId = IsValidAppId(savedId) ? savedId : "";
+            appIdBox.Text = savedId;
+            if (!officialModeEnabled && !IsValidAppId(savedId))
+            {
+                officialModeBox.Checked = true;
+                customModeBox.Checked = false;
+                officialModeEnabled = true;
+            }
         }
         catch { }
+        finally { loadingProfile = previousLoadingState; }
+        ApplyPresenceMode();
     }
 
     private void ApplyPresenceMode()
     {
         officialModeEnabled = officialModeBox.Checked;
-        bool customEnabled = !officialModeEnabled;
+        if (customModeBox.Checked == officialModeEnabled) customModeBox.Checked = !officialModeEnabled;
+        ApplyModeCardVisuals();
+        bool customEnabled = !officialModeEnabled && IsCustomSetupReady();
         // Native detection is entirely controlled by Discord. Dim every
         // custom-only input so it is immediately obvious what can be changed.
-        appIdBox.Enabled = customEnabled;
-        connectButton.Enabled = customEnabled;
+        // Application setup itself always stays available, even in native mode.
+        appIdBox.Enabled = true;
+        connectButton.Enabled = true;
         startupDelayBox.Enabled = customEnabled;
         joinGameBox.Enabled = customEnabled;
         editJoinButton.Enabled = customEnabled;
@@ -408,22 +1308,21 @@ internal sealed class PresenceForm : Form
         if (officialModeEnabled)
         {
             rpc.Stop();
+            rpcConnected = false;
             currentActivityTemplate = "";
             currentActivityDeadline = 0;
-            connectionLabel.Text = "●  NATIVE MODE — custom Rich Presence is OFF";
-            connectionLabel.ForeColor = Color.FromArgb(63, 214, 127);
-            modeExplanationLabel.Text = "DISCORD CONTROLS THE OFFICIAL CARD + VOICE TILE  •  CUSTOM CONTROLS ARE LOCKED";
-            modeExplanationLabel.ForeColor = Color.FromArgb(63, 214, 127);
-            sessionHeaderLabel.Text = "SESSION DIRECTOR — LOCKED IN NATIVE MODE";
+            connectionLabel.Text = "●  Native Discord Detection";
+            connectionLabel.ForeColor = Color.FromArgb(70, 204, 105);
+            modeExplanationLabel.Text = "Discord controls the native game card. Custom Rich Presence controls are locked.";
+            modeExplanationLabel.ForeColor = Color.FromArgb(70, 204, 105);
+            sessionHeaderLabel.Text = "SESSION DIRECTOR";
             sessionHeaderLabel.ForeColor = Color.FromArgb(132, 128, 148);
-            currentStatusLabel.Text = "Native game card active • Application ID is not being used";
-            currentStatusLabel.ForeColor = Color.FromArgb(63, 214, 127);
         }
         else if (IsValidAppId(appIdBox.Text.Trim()))
         {
-            modeExplanationLabel.Text = "CUSTOM CARD ACTIVE  •  Button is shown to others; Discord's native voice tile is unavailable";
+            modeExplanationLabel.Text = "Custom controls are active. The activity button is visible to other users, not to you.";
             modeExplanationLabel.ForeColor = Color.FromArgb(255, 151, 62);
-            sessionHeaderLabel.Text = "SESSION DIRECTOR — CUSTOM CONTROLS ACTIVE";
+            sessionHeaderLabel.Text = "SESSION DIRECTOR";
             sessionHeaderLabel.ForeColor = Color.FromArgb(255, 151, 62);
             ConnectPresence();
         }
@@ -431,15 +1330,17 @@ internal sealed class PresenceForm : Form
         {
             currentActivityTemplate = "";
             currentActivityDeadline = 0;
-            connectionLabel.Text = "●  CUSTOM MODE — enter an Application ID";
+            rpcConnected = false;
+            connectionLabel.Text = "●  Rich Presence requires an Application ID";
             connectionLabel.ForeColor = Color.FromArgb(255, 190, 80);
-            modeExplanationLabel.Text = "ADD AN APPLICATION ID  •  Custom mode cannot show Discord's native voice tile";
+            modeExplanationLabel.Text = "Enter a Discord Application ID and press APPLY ID.";
             modeExplanationLabel.ForeColor = Color.FromArgb(255, 151, 62);
-            sessionHeaderLabel.Text = "SESSION DIRECTOR — CUSTOM CONTROLS ACTIVE";
+            sessionHeaderLabel.Text = "SESSION DIRECTOR";
             sessionHeaderLabel.ForeColor = Color.FromArgb(255, 151, 62);
             currentStatusLabel.Text = "Enter an Application ID above, then press APPLY ID";
             currentStatusLabel.ForeColor = Color.FromArgb(255, 190, 80);
         }
+        RefreshDashboard();
     }
 
     private void LoadProfile()
@@ -447,13 +1348,14 @@ internal sealed class PresenceForm : Form
         loadingProfile = true;
         try
         {
-            bool startupDelay = true;
+            bool startupDelay = false;
             bool joinButton = false;
+            bool officialMode = true;
             int rotationMinutes = 0;
             string mode = "Auto";
             string status = "";
             string state = "";
-            string sessionMode = "Realistic Auto";
+            string sessionMode = RealisticAutoModeLabel;
             string character = "Automatic";
             string joinLabel = DefaultActivityButtonLabel;
             string joinUrl = DefaultActivityButtonUrl;
@@ -468,12 +1370,13 @@ internal sealed class PresenceForm : Form
                     string key = line.Substring(0, separator).Trim();
                     string value = line.Substring(separator + 1).Trim();
                     bool parsed;
-                    if (key == "StartupDelay" && bool.TryParse(value, out parsed)) startupDelay = parsed;
+                    if (key == "OfficialMode" && bool.TryParse(value, out parsed)) officialMode = parsed;
+                    else if (key == "StartupDelay" && bool.TryParse(value, out parsed)) startupDelay = parsed;
                     else if (key == "JoinButton" && bool.TryParse(value, out parsed)) joinButton = parsed;
                     else if (key == "RotationMinutes" && int.TryParse(value, out rotationMinutes))
                         rotationMinutes = Math.Max(0, Math.Min(120, rotationMinutes));
                     else if (key == "Mode") mode = value;
-                    else if (key == "SessionMode") sessionMode = DecodeProfileValue(value, "Realistic Auto");
+                    else if (key == "SessionMode") sessionMode = DecodeProfileValue(value, RealisticAutoModeLabel);
                     else if (key == "Character") character = DecodeProfileValue(value, "Automatic");
                     else if (key == "JoinLabelBase64" && value.Length > 0)
                         joinLabel = DecodeProfileValue(value, DefaultActivityButtonLabel);
@@ -487,12 +1390,16 @@ internal sealed class PresenceForm : Form
                 }
             }
 
+            // Profiles from 1.3.2 used the shorter label. Keep them compatible
+            // while making the resume behavior explicit in the current UI.
+            if (string.Equals(sessionMode, "Realistic Auto", StringComparison.Ordinal))
+                sessionMode = RealisticAutoModeLabel;
+
             startupDelayBox.Checked = startupDelay;
             joinGameBox.Checked = joinButton;
-            // Always start in pure Discord detection mode. Users may switch to
-            // custom Rich Presence manually for the current session.
-            officialModeBox.Checked = true;
-            officialModeEnabled = true;
+            officialModeBox.Checked = officialMode;
+            customModeBox.Checked = !officialMode;
+            officialModeEnabled = officialMode;
             activeMode = mode;
             activeStatus = status;
             activeState = state;
@@ -546,11 +1453,20 @@ internal sealed class PresenceForm : Form
             else
             {
                 activeMode = "Auto";
-                activeStatus = "";
-                activeState = "";
                 sessionModeBox.SelectedIndex = 0;
                 statusBox.SelectedIndex = 0;
-                rpc.UseAutomaticSequence(characterBox.SelectedItem.ToString());
+                if (status.Length > 0 && state.Length > 0)
+                {
+                    activeStatus = status;
+                    activeState = state;
+                    rpc.ResumeAutomaticSequence(characterBox.SelectedItem.ToString(), status, state);
+                }
+                else
+                {
+                    activeStatus = "";
+                    activeState = "";
+                    rpc.UseAutomaticSequence(characterBox.SelectedItem.ToString());
+                }
             }
         }
         catch { }
@@ -564,7 +1480,7 @@ internal sealed class PresenceForm : Form
         {
             string encodedStatus = Convert.ToBase64String(Encoding.UTF8.GetBytes(activeStatus ?? ""));
             string encodedState = Convert.ToBase64String(Encoding.UTF8.GetBytes(activeState ?? ""));
-            string encodedSessionMode = Convert.ToBase64String(Encoding.UTF8.GetBytes(activeSessionMode ?? "Realistic Auto"));
+            string encodedSessionMode = Convert.ToBase64String(Encoding.UTF8.GetBytes(activeSessionMode ?? RealisticAutoModeLabel));
             string encodedCharacter = Convert.ToBase64String(Encoding.UTF8.GetBytes(activeCharacter ?? "Automatic"));
             string encodedJoinLabel = Convert.ToBase64String(Encoding.UTF8.GetBytes(activeJoinLabel ?? DefaultActivityButtonLabel));
             string encodedJoinUrl = Convert.ToBase64String(Encoding.UTF8.GetBytes(activeJoinUrl ?? DefaultActivityButtonUrl));
@@ -572,6 +1488,7 @@ internal sealed class PresenceForm : Form
             {
                 "Version=5",
                 "OnboardingComplete=" + onboardingComplete,
+                "OfficialMode=" + officialModeEnabled,
                 "StartupDelay=" + startupDelayBox.Checked,
                 "JoinButton=" + joinGameBox.Checked,
                 "RotationMinutes=" + activeRotationMinutes,
@@ -589,11 +1506,6 @@ internal sealed class PresenceForm : Form
 
     private void ConnectPresence()
     {
-        if (officialModeEnabled)
-        {
-            ApplyPresenceMode();
-            return;
-        }
         string id = appIdBox.Text.Trim();
         if (!IsValidAppId(id))
         {
@@ -602,6 +1514,9 @@ internal sealed class PresenceForm : Form
             return;
         }
 
+        bool newApplication = !string.Equals(id, appliedApplicationId, StringComparison.Ordinal);
+        if (newApplication) ResetAutomaticDefaultsForNewApplication();
+
         try { File.WriteAllText(configPath, id); }
         catch (Exception ex)
         {
@@ -609,13 +1524,63 @@ internal sealed class PresenceForm : Form
                 "Save failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
+        appliedApplicationId = id;
+        ApplyModeCardVisuals();
+        if (officialModeEnabled)
+        {
+            ApplyPresenceMode();
+            SaveProfile();
+            MessageBox.Show("Application ID saved. Custom Rich Presence is now unlocked with Realistic Auto (Resume) and Automatic selected.\r\n\r\n" +
+                "A newly created Discord app and its image can take a few minutes to synchronize. If the card is incomplete, wait briefly, select Custom Rich Presence, then press SET STATUS again. Repeated presses keep the same scene.",
+                "Custom mode unlocked", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
         // Keep both controls available so a different Application ID can be
         // applied immediately without restarting the desktop app.
         connectButton.Enabled = true;
         appIdBox.Enabled = true;
+        rpcConnected = false;
+        customSessionStarted = UiUnixNow();
         connectionLabel.Text = "●  Connecting to Discord…";
         connectionLabel.ForeColor = Color.FromArgb(255, 190, 80);
         rpc.Start(id);
+        RefreshDashboard();
+
+        if (newApplication)
+        {
+            MessageBox.Show("Realistic Auto (Resume) is ready and starts with Automatic character selection.\r\n\r\n" +
+                "Discord may need a few minutes to synchronize a new application or image. If needed, wait and press SET STATUS again; it will refresh the same scene instead of choosing another one.",
+                "First Discord sync", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+    }
+
+    private void ResetAutomaticDefaultsForNewApplication()
+    {
+        bool previousLoadingState = loadingProfile;
+        loadingProfile = true;
+        try
+        {
+            sessionModeBox.SelectedIndex = 0;
+            characterBox.SelectedIndex = 0;
+            statusBox.SelectedIndex = 0;
+            customStatusBox.Text = "";
+            rotationIntervalBox.SelectedIndex = 0;
+            activeMode = "Auto";
+            activeStatus = "";
+            activeState = "";
+            activeSessionMode = RealisticAutoModeLabel;
+            activeCharacter = "Automatic";
+            activeRotationMinutes = 0;
+            currentActivityTemplate = "";
+            currentActivityDeadline = 0;
+            rpc.SetRotationIntervalMinutes(0);
+            rpc.UseAutomaticSequence("Automatic");
+        }
+        finally
+        {
+            loadingProfile = previousLoadingState;
+        }
     }
 
     private void SaveApplicationIdDraft()
@@ -764,6 +1729,7 @@ internal sealed class PresenceForm : Form
             BeginInvoke((MethodInvoker)delegate
             {
                 if (officialModeEnabled) return;
+                rpcConnected = connected;
                 connectionLabel.Text = "●  " + message;
                 connectionLabel.ForeColor = connected ? Color.FromArgb(63, 214, 127) : Color.FromArgb(255, 190, 80);
                 if (!connected && message.StartsWith("Error"))
@@ -771,6 +1737,7 @@ internal sealed class PresenceForm : Form
                     connectButton.Enabled = true;
                     appIdBox.Enabled = true;
                 }
+                RefreshDashboard();
             });
         }
         catch { }
@@ -786,9 +1753,20 @@ internal sealed class PresenceForm : Form
                 if (officialModeEnabled) return;
                 currentActivityTemplate = message ?? "";
                 currentActivityDeadline = deadline;
+                if (activeMode == "Auto" && !string.IsNullOrEmpty(message) &&
+                    !message.StartsWith("Starting", StringComparison.OrdinalIgnoreCase))
+                {
+                    string[] activityLines = message.Replace("\r", "").Split('\n');
+                    if (activityLines.Length > 0) activeState = activityLines[0].Trim();
+                    if (activityLines.Length > 1) activeStatus = TrimActivityTiming(activityLines[1].Trim());
+                    activeSessionMode = RealisticAutoModeLabel;
+                    activeCharacter = characterBox.SelectedItem == null ? "Automatic" : characterBox.SelectedItem.ToString();
+                    SaveProfile();
+                }
                 UpdateCurrentStatusCountdown();
                 currentStatusLabel.ForeColor = message.StartsWith("Starting")
                     ? Color.FromArgb(255, 190, 80) : Color.FromArgb(63, 214, 127);
+                RefreshDashboard();
             });
         }
         catch { }
@@ -840,6 +1818,7 @@ internal sealed class PresenceForm : Form
         activeState = BuildStateForSelection();
         rpc.UseActivity(value, activeState);
         SaveProfile();
+        RefreshDashboard();
     }
 
     private void ApplySessionProfile()
@@ -847,14 +1826,20 @@ internal sealed class PresenceForm : Form
         if (officialModeEnabled) { ShowCustomModeRequired(); return; }
         string sessionMode = sessionModeBox.SelectedItem.ToString();
         string character = characterBox.SelectedItem.ToString();
+        bool keepingCurrentAutomaticScene = activeMode == "Auto" &&
+            string.Equals(activeSessionMode, sessionMode, StringComparison.Ordinal) &&
+            string.Equals(activeCharacter, character, StringComparison.Ordinal);
         activeSessionMode = sessionMode;
         activeCharacter = character;
 
-        if (sessionMode == "Realistic Auto")
+        if (sessionMode == RealisticAutoModeLabel)
         {
             activeMode = "Auto";
-            activeStatus = "";
-            activeState = "";
+            if (!keepingCurrentAutomaticScene)
+            {
+                activeStatus = "";
+                activeState = "";
+            }
             rpc.UseAutomaticSequence(character);
         }
         else
@@ -877,6 +1862,7 @@ internal sealed class PresenceForm : Form
             rpc.UseActivity(activeStatus, activeState);
         }
         SaveProfile();
+        RefreshDashboard();
     }
 
     private void AdvanceAutomaticScene()
@@ -886,10 +1872,11 @@ internal sealed class PresenceForm : Form
         activeMode = "Auto";
         activeStatus = "";
         activeState = "";
-        activeSessionMode = "Realistic Auto";
+        activeSessionMode = RealisticAutoModeLabel;
         activeCharacter = characterBox.SelectedItem.ToString();
         rpc.AdvanceAutomaticScene(activeCharacter);
         SaveProfile();
+        RefreshDashboard();
     }
 
     private string BuildStateForSelection()
@@ -967,6 +1954,100 @@ internal sealed class PresenceForm : Form
         ShowSetupGuide(true);
     }
 
+    private void ShowCustomModeGuide()
+    {
+        Color pink = Color.FromArgb(255, 70, 156);
+        Color orange = Color.FromArgb(255, 151, 62);
+        Color green = Color.FromArgb(63, 214, 127);
+        Color muted = Color.FromArgb(184, 181, 196);
+        Color card = Color.FromArgb(24, 22, 32);
+        DialogResult result;
+
+        using (Form guide = new Form())
+        {
+            guide.Text = "Unlock Custom Rich Presence";
+            guide.ClientSize = new Size(640, 690);
+            guide.StartPosition = FormStartPosition.CenterParent;
+            guide.FormBorderStyle = FormBorderStyle.FixedDialog;
+            guide.MaximizeBox = false;
+            guide.MinimizeBox = false;
+            guide.ShowInTaskbar = false;
+            guide.BackColor = Color.FromArgb(10, 9, 15);
+            guide.ForeColor = Color.White;
+            guide.Icon = Icon;
+
+            guide.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 7, BackColor = pink });
+            guide.Controls.Add(new Label
+            {
+                Location = new Point(30, 25), Size = new Size(580, 44), Text = "CUSTOM MODE IS LOCKED",
+                Font = new Font("Arial Black", 19f, FontStyle.Bold), ForeColor = Color.White
+            });
+            guide.Controls.Add(new Label
+            {
+                Location = new Point(33, 72), Size = new Size(575, 50),
+                Text = "Complete this one-time Discord setup. Session Director unlocks only after a valid Application ID is applied.",
+                Font = new Font("Segoe UI", 10f), ForeColor = muted
+            });
+
+            Panel steps = new Panel
+            {
+                Location = new Point(30, 128), Size = new Size(580, 318), BackColor = card,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            guide.Controls.Add(steps);
+            steps.Controls.Add(MakeGuideStep("1", "CREATE THE APPLICATION", "Click New Application and name it Grand Theft Auto VI.", 18, pink));
+            steps.Controls.Add(MakeGuideStep("2", "COMPLETE GENERAL INFORMATION", "Upload gtavi_cover.png as App Icon, save, then copy Application ID.", 90, orange));
+            steps.Controls.Add(MakeGuideStep("3", "ADD THE RICH PRESENCE ASSET", "Upload the same PNG, then name the resource gtavi_cover.", 162, green));
+            steps.Controls.Add(MakeGuideStep("4", "UNLOCK CUSTOM MODE", "Paste Application ID in Settings and press APPLY ID.", 234, Color.FromArgb(120, 130, 255)));
+
+            Panel safety = new Panel
+            {
+                Location = new Point(30, 462), Size = new Size(580, 108), BackColor = Color.FromArgb(29, 25, 37)
+            };
+            guide.Controls.Add(safety);
+            safety.Controls.Add(new Label
+            {
+                Location = new Point(16, 13), Size = new Size(548, 23), Text = "WHAT TO COPY",
+                Font = new Font("Segoe UI Semibold", 9.2f, FontStyle.Bold), ForeColor = green
+            });
+            safety.Controls.Add(new Label
+            {
+                Location = new Point(16, 39), Size = new Size(548, 55),
+                Text = "Use the Application ID from General Information — not your Discord user ID. Never paste a Bot Token, Client Secret, password or OAuth code.",
+                Font = new Font("Segoe UI", 9.2f), ForeColor = Color.White
+            });
+
+            guide.Controls.Add(new Label
+            {
+                Location = new Point(33, 576), Size = new Size(575, 52),
+                Text = "After APPLY ID, Custom changes from LOCKED to READY. New Discord apps and images may need a few minutes to sync; wait, then press SET STATUS again if needed.",
+                Font = new Font("Segoe UI Semibold", 8.9f, FontStyle.Bold), ForeColor = orange
+            });
+
+            Button portal = MakeButton("OPEN DEV PORTAL", new Point(30, 634), 190, Color.FromArgb(74, 79, 177));
+            portal.Click += delegate { Process.Start("https://discord.com/developers/applications"); };
+            guide.Controls.Add(portal);
+
+            Button settings = MakeButton("GO TO SETTINGS", new Point(230, 634), 190, pink);
+            settings.DialogResult = DialogResult.OK;
+            guide.AcceptButton = settings;
+            guide.Controls.Add(settings);
+
+            Button cancel = MakeButton("NOT NOW", new Point(430, 634), 180, Color.FromArgb(50, 42, 50));
+            cancel.DialogResult = DialogResult.Cancel;
+            guide.CancelButton = cancel;
+            guide.Controls.Add(cancel);
+
+            result = guide.ShowDialog(this);
+        }
+
+        if (result == DialogResult.OK && openSettingsPage != null)
+        {
+            openSettingsPage();
+            appIdBox.Focus();
+        }
+    }
+
     private void ShowSetupGuide(bool firstRun)
     {
         Color pink = Color.FromArgb(255, 70, 156);
@@ -1025,15 +2106,15 @@ internal sealed class PresenceForm : Form
             guide.Controls.Add(controlsGuide);
             controlsGuide.Controls.Add(MakeControlHint("DISCORD GAME DETECTION", "Official card, icon, timer and voice tile. Custom controls stay locked.", 12, green));
             controlsGuide.Controls.Add(MakeControlHint("APPLY ID", "Starts Custom Rich Presence using the Application ID entered above.", 50, pink));
-            controlsGuide.Controls.Add(MakeControlHint("SET STATUS / NEXT SCENE", "Applies the selected scene or skips to the next automatic scene.", 88, orange));
+            controlsGuide.Controls.Add(MakeControlHint("SET STATUS / NEXT SCENE", "SET refreshes the current automatic scene; NEXT SCENE is the only manual skip.", 88, orange));
             controlsGuide.Controls.Add(MakeControlHint("USE TEXT / AUTO ROTATION", "Publishes your own description and controls how often scenes change.", 126, orange));
             controlsGuide.Controls.Add(MakeControlHint("ADD BUTTON + SET", "Adds a custom link visible to other users only; SET edits its text and URL.", 164, Color.FromArgb(120, 130, 255)));
 
             guide.Controls.Add(new Label
             {
                 Location = new Point(33, 635), Size = new Size(575, 40),
-                Text = "FIRST-RUN DEFAULTS  •  5-minute startup delay ON  •  Add button OFF",
-                Font = new Font("Segoe UI Semibold", 9.2f, FontStyle.Bold), ForeColor = green
+                Text = "FIRST-RUN DEFAULTS  •  5-minute startup delay OFF  •  Add button OFF\r\nLike it? Open About to star, share or send feedback.",
+                Font = new Font("Segoe UI Semibold", 8.9f, FontStyle.Bold), ForeColor = green
             });
 
             Button openDiscord = MakeButton("OPEN DISCORD", new Point(30, 684), 180, Color.FromArgb(74, 79, 177));
@@ -1122,7 +2203,7 @@ internal sealed class PresenceForm : Form
 
     private static Button MakeButton(string text, Point location, int width, Color background)
     {
-        Button button = new Button
+        Button button = new RoundedButton
         {
             Text = text, Location = location, Size = new Size(width, 36), BackColor = background,
             ForeColor = Color.White, FlatStyle = FlatStyle.Flat,
@@ -1154,7 +2235,7 @@ internal sealed class PresenceForm : Form
 
     private static ComboBox MakeComboBox(Point location, int width)
     {
-        ComboBox combo = new ComboBox
+        ComboBox combo = new DarkComboBox
         {
             Location = location, Size = new Size(width, 31),
             Font = new Font("Segoe UI", 10.2f), BackColor = Color.FromArgb(34, 31, 44),
@@ -1180,6 +2261,209 @@ internal sealed class PresenceForm : Form
                     new RectangleF(args.Bounds.X + 4, args.Bounds.Y + 2, args.Bounds.Width - 8, args.Bounds.Height - 4));
         }
         args.DrawFocusRectangle();
+    }
+}
+
+internal sealed class RoundedButton : Button
+{
+    public int Radius { get; set; }
+
+    public RoundedButton()
+    {
+        Radius = 7;
+        SetStyle(ControlStyles.ResizeRedraw | ControlStyles.OptimizedDoubleBuffer, true);
+    }
+
+    protected override void OnResize(EventArgs eventArgs)
+    {
+        base.OnResize(eventArgs);
+        if (Width <= 0 || Height <= 0) return;
+        int diameter = Math.Min(Math.Min(Width, Height), Math.Max(2, Radius * 2));
+        using (GraphicsPath path = new GraphicsPath())
+        {
+            Rectangle arc = new Rectangle(0, 0, diameter, diameter);
+            path.AddArc(arc, 180, 90);
+            arc.X = Width - diameter;
+            path.AddArc(arc, 270, 90);
+            arc.Y = Height - diameter;
+            path.AddArc(arc, 0, 90);
+            arc.X = 0;
+            path.AddArc(arc, 90, 90);
+            path.CloseFigure();
+            Region oldRegion = Region;
+            Region = new Region(path);
+            if (oldRegion != null) oldRegion.Dispose();
+        }
+    }
+}
+
+internal sealed class DarkComboBox : ComboBox
+{
+    private const int WmPaint = 0x000F;
+    private const int WmNcPaint = 0x0085;
+    private const int WmPrintClient = 0x0318;
+
+    protected override void WndProc(ref Message message)
+    {
+        base.WndProc(ref message);
+        if (message.Msg == WmPaint || message.Msg == WmNcPaint || message.Msg == WmPrintClient)
+            PaintDarkChrome();
+    }
+
+    protected override void OnGotFocus(EventArgs eventArgs)
+    {
+        base.OnGotFocus(eventArgs);
+        Invalidate();
+    }
+
+    protected override void OnLostFocus(EventArgs eventArgs)
+    {
+        base.OnLostFocus(eventArgs);
+        Invalidate();
+    }
+
+    protected override void OnEnabledChanged(EventArgs eventArgs)
+    {
+        base.OnEnabledChanged(eventArgs);
+        Invalidate();
+    }
+
+    private void PaintDarkChrome()
+    {
+        if (!IsHandleCreated || Width < 34 || Height < 12) return;
+        Color surface = Enabled ? Color.FromArgb(34, 31, 44) : Color.FromArgb(27, 26, 35);
+        Color border = Focused ? Color.FromArgb(235, 51, 145) : Color.FromArgb(65, 65, 82);
+        Color arrow = Enabled ? Color.FromArgb(184, 181, 196) : Color.FromArgb(91, 89, 103);
+        const int buttonWidth = 28;
+        using (Graphics graphics = CreateGraphics())
+        using (SolidBrush surfaceBrush = new SolidBrush(surface))
+        using (SolidBrush borderBrush = new SolidBrush(border))
+        using (SolidBrush arrowBrush = new SolidBrush(arrow))
+        {
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            graphics.FillRectangle(surfaceBrush, ClientRectangle);
+            graphics.FillRectangle(borderBrush, 0, 0, Width, 1);
+            graphics.FillRectangle(borderBrush, 0, Height - 1, Width, 1);
+            graphics.FillRectangle(borderBrush, 0, 0, 1, Height);
+            graphics.FillRectangle(borderBrush, Width - 1, 0, 1, Height);
+            graphics.FillRectangle(borderBrush, Width - buttonWidth, 5, 1, Height - 10);
+
+            string value = SelectedItem == null ? Text : SelectedItem.ToString();
+            Color textColor = Enabled ? Color.White : Color.FromArgb(126, 123, 139);
+            TextRenderer.DrawText(graphics, value, Font,
+                new Rectangle(9, 1, Width - buttonWidth - 13, Height - 2), textColor,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+
+            int centerX = Width - (buttonWidth / 2);
+            int centerY = Height / 2;
+            graphics.FillPolygon(arrowBrush, new[]
+            {
+                new Point(centerX - 4, centerY - 2),
+                new Point(centerX + 4, centerY - 2),
+                new Point(centerX, centerY + 3)
+            });
+        }
+    }
+}
+
+internal sealed class CardPanel : Panel
+{
+    private Color borderColor = Color.FromArgb(43, 44, 58);
+    private Color accentColor = Color.Transparent;
+    private int accentWidth;
+    private int borderRadius = 10;
+    private int borderThickness = 1;
+
+    public Color BorderColor
+    {
+        get { return borderColor; }
+        set { borderColor = value; Invalidate(); }
+    }
+
+    public int BorderRadius
+    {
+        get { return borderRadius; }
+        set { borderRadius = Math.Max(0, value); UpdateRegion(); Invalidate(); }
+    }
+
+    public Color AccentColor
+    {
+        get { return accentColor; }
+        set { accentColor = value; Invalidate(); }
+    }
+
+    public int AccentWidth
+    {
+        get { return accentWidth; }
+        set { accentWidth = Math.Max(0, value); Invalidate(); }
+    }
+
+    public int BorderThickness
+    {
+        get { return borderThickness; }
+        set { borderThickness = Math.Max(1, value); Invalidate(); }
+    }
+
+    public CardPanel()
+    {
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+    }
+
+    protected override void OnResize(EventArgs eventArgs)
+    {
+        base.OnResize(eventArgs);
+        UpdateRegion();
+    }
+
+    protected override void OnPaint(PaintEventArgs eventArgs)
+    {
+        base.OnPaint(eventArgs);
+        if (Width < 2 || Height < 2) return;
+        eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        Rectangle bounds = new Rectangle(borderThickness / 2, borderThickness / 2,
+            Width - borderThickness, Height - borderThickness);
+        using (GraphicsPath path = CreateRoundedPath(bounds, borderRadius))
+        using (Pen pen = new Pen(borderColor, borderThickness))
+            eventArgs.Graphics.DrawPath(pen, path);
+        if (accentWidth > 0 && accentColor.A > 0 && Height > 28)
+        {
+            using (SolidBrush accentBrush = new SolidBrush(accentColor))
+                eventArgs.Graphics.FillRectangle(accentBrush, 1, 14, accentWidth, Height - 28);
+        }
+    }
+
+    private void UpdateRegion()
+    {
+        if (Width <= 0 || Height <= 0) return;
+        using (GraphicsPath path = CreateRoundedPath(new Rectangle(0, 0, Width, Height), borderRadius))
+        {
+            Region oldRegion = Region;
+            Region = new Region(path);
+            if (oldRegion != null) oldRegion.Dispose();
+        }
+    }
+
+    private static GraphicsPath CreateRoundedPath(Rectangle bounds, int radius)
+    {
+        GraphicsPath path = new GraphicsPath();
+        int diameter = Math.Min(Math.Min(bounds.Width, bounds.Height), Math.Max(1, radius * 2));
+        if (diameter <= 2)
+        {
+            path.AddRectangle(bounds);
+            return path;
+        }
+        Rectangle arc = new Rectangle(bounds.X, bounds.Y, diameter, diameter);
+        path.AddArc(arc, 180, 90);
+        arc.X = bounds.Right - diameter;
+        path.AddArc(arc, 270, 90);
+        arc.Y = bounds.Bottom - diameter;
+        path.AddArc(arc, 0, 90);
+        arc.X = bounds.X;
+        path.AddArc(arc, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 }
 
@@ -1246,40 +2530,50 @@ internal sealed class DiscordRpcClient : IDisposable
         public readonly string Actor;
         public readonly int MinSeconds;
         public readonly int MaxSeconds;
+        public readonly bool Repeatable;
 
-        public PresenceScene(string details, string state, string actor, int minSeconds, int maxSeconds)
+        public PresenceScene(string details, string state, string actor, int minSeconds, int maxSeconds, bool repeatable)
         {
             Details = details;
             State = state;
             Actor = actor;
             MinSeconds = minSeconds;
             MaxSeconds = maxSeconds;
+            Repeatable = repeatable;
         }
     }
 
+    // This is a believable play-session arc, not a claim about Rockstar's
+    // unreleased mission order. It begins quietly, introduces the two public
+    // character threads separately, then moves into shared and higher-action
+    // scenes. Ambient scenes may recur after several other activities.
     private static readonly PresenceScene[] RealisticScenes =
     {
-        new PresenceScene("Main Menu", "Story Mode", "Any", 60, 120),
-        new PresenceScene("Exploring The Leonida Keys", "Free Roam • Jason Duval", "Jason", 480, 900),
-        new PresenceScene("Working For Local Runners", "Story Mode • Jason Duval", "Jason", 360, 720),
-        new PresenceScene("Meeting At The Boatyard", "With Brian Heder • Jason", "Jason", 300, 600),
-        new PresenceScene("Snooping On Coast Guard Comms", "With Cal Hampton • Jason", "Jason", 300, 600),
-        new PresenceScene("Cruising Through Vice City", "Free Roam • Lucia Caminos", "Lucia", 480, 900),
-        new PresenceScene("Changing The Look In Vice City", "Story Mode • Lucia Caminos", "Lucia", 240, 480),
-        new PresenceScene("Planning The Next Score", "Jason & Lucia", "Both", 360, 720),
-        new PresenceScene("Meeting Raul Bautista", "Preparing A Score • Jason & Lucia", "Both", 300, 600),
-        new PresenceScene("Pulling Off An Easy Score", "Story Mission • Jason & Lucia", "Both", 720, 1500),
-        new PresenceScene("Escaping A Botched Robbery", "Wanted • Jason & Lucia", "Both", 360, 720),
-        new PresenceScene("Laying Low In Port Gellhorn", "Story Mode • Lucia Caminos", "Lucia", 480, 900),
-        new PresenceScene("Hitting The Vice City Clubs", "Nightlife • Lucia Caminos", "Lucia", 360, 720),
-        new PresenceScene("Talking Business With Boobie Ike", "Jack Of Hearts • Vice City", "Any", 300, 600),
-        new PresenceScene("Recording At Only Raw Records", "With Dre'Quan Priest", "Any", 300, 600),
-        new PresenceScene("Chasing A Viral Hit", "With Real Dimez", "Lucia", 300, 600),
-        new PresenceScene("Crossing The Grassrivers", "Free Roam • Jason Duval", "Jason", 480, 900),
-        new PresenceScene("Moving Product Through The Keys", "Working For Brian Heder • Jason", "Jason", 480, 900),
-        new PresenceScene("Riding Through Mount Kalaga", "Free Roam • Lucia Caminos", "Lucia", 480, 900),
-        new PresenceScene("Watching The Neon Glow", "Vice City • Night", "Both", 480, 900),
-        new PresenceScene("Living Another Day In Paradise", "Story Mode • Jason & Lucia", "Both", 480, 900)
+        new PresenceScene("Starting A New Session", "Story Mode", "Any", 300, 540, false),
+        new PresenceScene("Exploring The Leonida Keys", "Free Roam • Jason Duval", "Jason", 600, 1080, true),
+        new PresenceScene("Working For Local Runners", "Story Mode • Jason Duval", "Jason", 480, 840, false),
+        new PresenceScene("Leaving Leonida Penitentiary", "Story Mode • Lucia Caminos", "Lucia", 360, 600, false),
+        new PresenceScene("Laying Low In Port Gellhorn", "Story Mode • Lucia Caminos", "Lucia", 480, 840, true),
+        new PresenceScene("Hanging Out At The Safehouse", "Story Mode • Jason & Lucia", "Both", 480, 840, true),
+        new PresenceScene("Driving In Leonida", "Free Roam • Jason & Lucia", "Both", 600, 1080, true),
+        new PresenceScene("Planning The Next Score", "Story Mode • Jason & Lucia", "Both", 480, 840, false),
+        new PresenceScene("Meeting Raul Bautista", "Preparing A Score • Jason & Lucia", "Both", 420, 720, false),
+        new PresenceScene("Pulling Off An Easy Score", "Story Mission • Jason & Lucia", "Both", 720, 1200, false),
+        new PresenceScene("Escaping A Botched Robbery", "Wanted • Jason & Lucia", "Both", 420, 720, false),
+        new PresenceScene("Meeting At The Boatyard", "With Brian Heder • Jason", "Jason", 420, 720, false),
+        new PresenceScene("Moving Product Through The Keys", "Working For Brian Heder • Jason", "Jason", 540, 900, false),
+        new PresenceScene("Hanging Out With Cal Hampton", "Story Mode • Jason Duval", "Jason", 420, 720, true),
+        new PresenceScene("Snooping On Coast Guard Comms", "With Cal Hampton • Jason", "Jason", 420, 720, true),
+        new PresenceScene("Cruising Through Vice City", "Free Roam • Lucia Caminos", "Lucia", 600, 1080, true),
+        new PresenceScene("Changing The Look In Vice City", "Story Mode • Lucia Caminos", "Lucia", 360, 660, true),
+        new PresenceScene("Crossing The Grassrivers", "Free Roam • Jason Duval", "Jason", 600, 1080, true),
+        new PresenceScene("Riding Through Mount Kalaga", "Free Roam • Lucia Caminos", "Lucia", 600, 1080, true),
+        new PresenceScene("Hitting The Vice City Clubs", "Nightlife • Lucia Caminos", "Lucia", 540, 900, true),
+        new PresenceScene("Talking Business With Boobie Ike", "Jack Of Hearts • Vice City", "Any", 480, 780, false),
+        new PresenceScene("Recording At Only Raw Records", "With Dre'Quan Priest", "Any", 480, 780, false),
+        new PresenceScene("Chasing A Viral Hit", "With Real Dimez", "Lucia", 420, 720, false),
+        new PresenceScene("Watching The Neon Glow", "Vice City • Night", "Both", 720, 1200, true),
+        new PresenceScene("Living Another Day In Paradise", "Story Mode • Jason & Lucia", "Both", 720, 1200, true)
     };
 
     public event Action<string, bool> StatusChanged;
@@ -1300,8 +2594,17 @@ internal sealed class DiscordRpcClient : IDisposable
     private string currentActivity;
     private string currentState;
     private string actorFilter = "Automatic";
-    private bool startupDelayEnabled = true;
-    private bool joinButtonEnabled = true;
+    private bool automaticSequenceFresh = true;
+    private bool automaticSequenceConfigured;
+    private string resumeActivity;
+    private string resumeState;
+    private int automaticStepCount;
+    private int scenesSinceRepeat;
+    private int highestVisitedIndex = -1;
+    private int lastSceneIndex = -1;
+    private int previousSceneIndex = -1;
+    private bool startupDelayEnabled;
+    private bool joinButtonEnabled;
     private string joinButtonLabel = DefaultActivityButtonLabel;
     private string joinButtonUrl = DefaultActivityButtonUrl;
     private int rotationIntervalMinutes;
@@ -1317,12 +2620,8 @@ internal sealed class DiscordRpcClient : IDisposable
         clientId = id;
         stopping = false;
         ready = false;
-        lock (stateLock)
-        {
-            nextActivityIndex = 0;
-            currentActivity = null;
-            currentState = null;
-        }
+        // Keep the selected automatic scene across an RPC restart. A new App
+        // ID explicitly resets it, while ordinary reconnects resume it.
         sessionStarted = UnixNow();
         worker = new Thread(WorkerLoop) { IsBackground = true, Name = "Discord RPC" };
         worker.Start();
@@ -1354,11 +2653,11 @@ internal sealed class DiscordRpcClient : IDisposable
                     else if (opcode == 1 && payload.IndexOf("\"evt\":\"READY\"", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         ready = true;
-                        PublishCurrentSelection();
+                        PublishCurrentSelection(true);
                         Raise("Rich Presence active", true);
                     }
                     else if (opcode == 1 && payload.IndexOf("\"evt\":\"ERROR\"", StringComparison.OrdinalIgnoreCase) >= 0)
-                        Raise("Discord error: check the Application ID and image asset key", false);
+                        Raise("Discord error: check the Application ID and Rich Presence image name", false);
                     else if (opcode == 2) break;
                 }
             }
@@ -1467,12 +2766,50 @@ internal sealed class DiscordRpcClient : IDisposable
 
     public void UseAutomaticSequence(string character)
     {
+        string normalizedActor = NormalizeActor(character);
+        string detailsToRefresh = null;
+        string stateToRefresh = null;
+        bool keepCurrentScene;
+        lock (stateLock)
+        {
+            keepCurrentScene = automaticSequenceConfigured && selectedActivity == null &&
+                string.Equals(actorFilter, normalizedActor, StringComparison.Ordinal) &&
+                !string.IsNullOrEmpty(currentActivity);
+            if (keepCurrentScene)
+            {
+                detailsToRefresh = currentActivity;
+                stateToRefresh = currentState;
+            }
+            else
+            {
+                selectedActivity = null;
+                selectedState = null;
+                actorFilter = normalizedActor;
+                automaticSequenceConfigured = true;
+                ResetAutomaticProgressLocked();
+            }
+        }
+        if (keepCurrentScene)
+        {
+            if (!ready || stopping) return;
+            try { SendActivity(detailsToRefresh, stateToRefresh); }
+            catch { }
+            return;
+        }
+        ApplySelectionNowOrQueue();
+    }
+
+    public void ResumeAutomaticSequence(string character, string activity, string state)
+    {
         lock (stateLock)
         {
             selectedActivity = null;
             selectedState = null;
             actorFilter = NormalizeActor(character);
-            nextActivityIndex = 0;
+            automaticSequenceConfigured = true;
+            ResetAutomaticProgressLocked();
+            resumeActivity = string.IsNullOrWhiteSpace(activity) ? null : activity.Trim();
+            resumeState = string.IsNullOrWhiteSpace(state) ? null : state.Trim();
         }
         ApplySelectionNowOrQueue();
     }
@@ -1484,6 +2821,10 @@ internal sealed class DiscordRpcClient : IDisposable
             selectedActivity = null;
             selectedState = null;
             actorFilter = NormalizeActor(character);
+            automaticSequenceConfigured = true;
+            resumeActivity = null;
+            resumeState = null;
+            automaticSequenceFresh = false;
         }
         ApplySelectionNowOrQueue();
     }
@@ -1499,6 +2840,9 @@ internal sealed class DiscordRpcClient : IDisposable
         {
             selectedActivity = value;
             selectedState = stateValue;
+            automaticSequenceConfigured = false;
+            resumeActivity = null;
+            resumeState = null;
         }
         ApplySelectionNowOrQueue();
     }
@@ -1521,6 +2865,11 @@ internal sealed class DiscordRpcClient : IDisposable
 
     private void PublishCurrentSelection()
     {
+        PublishCurrentSelection(false);
+    }
+
+    private void PublishCurrentSelection(bool preserveCurrentAutomaticScene)
+    {
         if (stopping || !ready || pipe == null || !pipe.IsConnected) return;
 
         if (IsStartupDelayActive())
@@ -1534,15 +2883,31 @@ internal sealed class DiscordRpcClient : IDisposable
 
         string manual;
         string manualState;
+        string existingAutomaticDetails;
+        string existingAutomaticState;
         lock (stateLock)
         {
             manual = selectedActivity;
             manualState = selectedState;
+            existingAutomaticDetails = preserveCurrentAutomaticScene && automaticSequenceConfigured ? currentActivity : null;
+            existingAutomaticState = preserveCurrentAutomaticScene && automaticSequenceConfigured ? currentState : null;
         }
         if (manual != null)
         {
             SendActivity(manual, manualState);
             RaiseActivity((manualState ?? "Story Mode") + "\r\n" + manual + "  •  manual", 0);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(existingAutomaticDetails))
+        {
+            PresenceScene existingScene = FindScene(existingAutomaticDetails);
+            int reconnectDelay = rotationIntervalMinutes > 0
+                ? rotationIntervalMinutes * 60
+                : random.Next(existingScene.MinSeconds, existingScene.MaxSeconds + 1);
+            SendActivity(existingAutomaticDetails, existingAutomaticState);
+            RaiseActivity((existingAutomaticState ?? "Story Mode") + "\r\n" + existingAutomaticDetails + "  •  changes in {0}", UnixNow() + reconnectDelay);
+            ScheduleTimer(reconnectDelay * 1000);
             return;
         }
 
@@ -1568,12 +2933,115 @@ internal sealed class DiscordRpcClient : IDisposable
 
     private PresenceScene GetNextSceneLocked()
     {
+        if (automaticSequenceFresh)
+        {
+            automaticSequenceFresh = false;
+            PresenceScene resumed = GetResumedSceneLocked();
+            if (resumed != null) return resumed;
+
+            // A brand-new automatic session always starts in Story Mode. It
+            // never jumps straight to a random character or to Main Menu.
+            int openingIndex = FindNextMatchingSceneIndexLocked(0, true);
+            if (openingIndex >= 0) return RecordSceneLocked(openingIndex, false);
+        }
+
+        if (automaticStepCount >= 6 && scenesSinceRepeat >= 3 && random.Next(100) < 20)
+        {
+            int repeatIndex = FindRepeatableVisitedSceneIndexLocked();
+            if (repeatIndex >= 0) return RecordSceneLocked(repeatIndex, true);
+        }
+
         for (int attempt = 0; attempt < RealisticScenes.Length; attempt++)
         {
-            PresenceScene candidate = RealisticScenes[nextActivityIndex];
+            // The initial "Starting A New Session" card is used only once.
+            // A full loop continues at the first playable scene instead.
+            if (automaticStepCount > 0 && nextActivityIndex == 0) nextActivityIndex = 1;
+            int candidateIndex = nextActivityIndex;
+            PresenceScene candidate = RealisticScenes[candidateIndex];
             nextActivityIndex = (nextActivityIndex + 1) % RealisticScenes.Length;
-            if (ActorMatches(candidate.Actor, actorFilter)) return candidate;
+            if (ActorMatches(candidate.Actor, actorFilter)) return RecordSceneLocked(candidateIndex, false);
         }
+        return RealisticScenes[0];
+    }
+
+    private PresenceScene GetResumedSceneLocked()
+    {
+        string activity = resumeActivity;
+        string state = resumeState;
+        resumeActivity = null;
+        resumeState = null;
+        if (string.IsNullOrWhiteSpace(activity)) return null;
+
+        for (int sceneIndex = 0; sceneIndex < RealisticScenes.Length; sceneIndex++)
+        {
+            PresenceScene scene = RealisticScenes[sceneIndex];
+            if (!string.Equals(scene.Details, activity, StringComparison.Ordinal)) continue;
+            if (!ActorMatches(scene.Actor, actorFilter)) continue;
+            nextActivityIndex = (sceneIndex + 1) % RealisticScenes.Length;
+            PresenceScene recorded = RecordSceneLocked(sceneIndex, false);
+            return string.IsNullOrWhiteSpace(state) || string.Equals(state, scene.State, StringComparison.Ordinal)
+                ? recorded
+                : new PresenceScene(recorded.Details, state, recorded.Actor,
+                    recorded.MinSeconds, recorded.MaxSeconds, recorded.Repeatable);
+        }
+        return null;
+    }
+
+    private int FindNextMatchingSceneIndexLocked(int startIndex, bool includeOpening)
+    {
+        for (int attempt = 0; attempt < RealisticScenes.Length; attempt++)
+        {
+            int index = (startIndex + attempt) % RealisticScenes.Length;
+            if (!includeOpening && index == 0) continue;
+            if (ActorMatches(RealisticScenes[index].Actor, actorFilter)) return index;
+        }
+        return -1;
+    }
+
+    private int FindRepeatableVisitedSceneIndexLocked()
+    {
+        int upperBound = Math.Min(highestVisitedIndex, RealisticScenes.Length - 1);
+        if (upperBound < 1) return -1;
+        int start = random.Next(1, upperBound + 1);
+        for (int attempt = 0; attempt < upperBound; attempt++)
+        {
+            int index = 1 + ((start - 1 + attempt) % upperBound);
+            PresenceScene scene = RealisticScenes[index];
+            if (!scene.Repeatable || index == lastSceneIndex || index == previousSceneIndex) continue;
+            if (ActorMatches(scene.Actor, actorFilter)) return index;
+        }
+        return -1;
+    }
+
+    private PresenceScene RecordSceneLocked(int sceneIndex, bool repeated)
+    {
+        previousSceneIndex = lastSceneIndex;
+        lastSceneIndex = sceneIndex;
+        highestVisitedIndex = Math.Max(highestVisitedIndex, sceneIndex);
+        automaticStepCount++;
+        scenesSinceRepeat = repeated ? 0 : scenesSinceRepeat + 1;
+        return RealisticScenes[sceneIndex];
+    }
+
+    private void ResetAutomaticProgressLocked()
+    {
+        nextActivityIndex = 0;
+        automaticSequenceFresh = true;
+        resumeActivity = null;
+        resumeState = null;
+        automaticStepCount = 0;
+        scenesSinceRepeat = 0;
+        highestVisitedIndex = -1;
+        lastSceneIndex = -1;
+        previousSceneIndex = -1;
+        currentActivity = null;
+        currentState = null;
+    }
+
+    private static PresenceScene FindScene(string activity)
+    {
+        for (int i = 0; i < RealisticScenes.Length; i++)
+            if (string.Equals(RealisticScenes[i].Details, activity, StringComparison.Ordinal)) return RealisticScenes[i];
         return RealisticScenes[0];
     }
 

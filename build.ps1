@@ -46,6 +46,7 @@ $CompilerArguments = @(
 )
 
 $IconPng = Join-Path $ProjectRoot 'assets\app-icon.png'
+$PreviewPng = Join-Path $ProjectRoot 'assets\rich-presence-cover.png'
 if (Test-Path -LiteralPath $IconPng) {
     $IconMakerPath = Join-Path $BuildDirectory 'IconMaker.exe'
     $IconPath = Join-Path $BuildDirectory 'app.ico'
@@ -54,6 +55,10 @@ if (Test-Path -LiteralPath $IconPng) {
     & $IconMakerPath $IconPng $IconPath
     if ($LASTEXITCODE -ne 0) { throw 'Icon generation failed.' }
     $CompilerArguments += "/win32icon:$IconPath"
+    if (-not (Test-Path -LiteralPath $PreviewPng)) {
+        throw "Rich Presence preview asset was not found: $PreviewPng"
+    }
+    $CompilerArguments += "/resource:$PreviewPng,GtaViPreview.png"
 }
 
 $CompilerArguments += "/out:$ExecutablePath"
@@ -66,6 +71,11 @@ $ImageDestination = Join-Path $DistDirectory 'gta6-image.txt'
 if (-not (Test-Path -LiteralPath $ImageDestination)) {
     Copy-Item -LiteralPath $ImageExample -Destination $ImageDestination
 }
+
+# Keep the source asset name stable, but ship an upload-ready copy whose
+# filename matches the Discord Rich Presence asset key.
+$UploadReadyCover = Join-Path $DistDirectory 'gtavi_cover.png'
+Copy-Item -LiteralPath $PreviewPng -Destination $UploadReadyCover -Force
 
 $ProfileExample = Join-Path $ProjectRoot 'config\gta6-profile.example.ini'
 $ProfileDestination = Join-Path $DistDirectory 'gta6-profile.ini'

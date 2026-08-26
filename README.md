@@ -9,6 +9,8 @@
   or custom Rich Presence with rotating scenes, editable text, timers, and saved profiles.
 </p>
 
+<p align="center"><strong>Created by Cyberpino (@mamt104 on GitHub).</strong></p>
+
 <p align="center">
   <a href="https://github.com/mamt104/gta6-discord-status-simulator/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/mamt104/gta6-discord-status-simulator?style=for-the-badge&color=ff4aa2"></a>
   <a href="https://github.com/mamt104/gta6-discord-status-simulator/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-5b5bd6?style=for-the-badge"></a>
@@ -28,18 +30,16 @@
 > [!IMPORTANT]
 > This is an unofficial fan-made utility. It is not affiliated with, endorsed by, or sponsored by Rockstar Games, Take-Two Interactive, or Discord. It does not include GTA VI and is not evidence of access to a game build.
 
-## Version 1.2.0 — complete workflow update
+## Version 1.3.3 — Realistic Auto Resume
 
-The Windows build and public source now use the same tested implementation. The complete first-run flow, native Discord detection, Custom Rich Presence controls, saved settings, and live UI timers are working together in the packaged release. All core features documented below were rebuilt and checked for this update.
+The Windows build and public source use the same tested implementation. This release fixes automatic first-time setup and makes scene rotation behave like a continuous play session instead of a random status picker.
 
-- a built-in setup guide explains Discord registration and every main control;
-- Discord detection starts by default and clearly locks controls that cannot affect the native card;
-- the Application ID can be entered or changed directly in the app without rebuilding;
-- `CURRENT PRESENCE` counts down every second during the five-minute startup period and before scene changes;
-- the five-minute startup delay is enabled by default, while the optional activity button starts disabled;
-- **Add button → SET** edits both the button label and destination URL;
-- **RESET DEFAULTS** restores the label `Join` and the official Rockstar GTA VI pre-order page;
-- profiles remember custom text, rotation interval, character, activity-button settings, and other preferences.
+- a newly applied Application ID defaults to **Realistic Auto (Resume)**, **Automatic**, suggested activity, empty custom text, and variable timing;
+- a new automatic session starts in **Story Mode**, never at a randomly selected scene or Main Menu;
+- pressing **SET STATUS** repeatedly refreshes the same scene; only the timer or **NEXT SCENE** advances it;
+- closing and reopening the app resumes the last automatic scene before continuing the sequence;
+- early solo activities lead into shared Jason and Lucia scenes, with longer variable durations and occasional natural repeats;
+- the setup guide now warns that newly created Discord apps and images may take a few minutes to synchronize.
 
 ## GTA 6 fake Discord status, without game files
 
@@ -69,7 +69,7 @@ The app can appear in Discord through normal executable detection or send a cust
 | Highlight | What you get |
 | --- | --- |
 | Natural Discord detection | Discord controls the game card, hover behavior, Game Profile link, and recent activity |
-| Session director | Ordered or manual activities with realistic timing |
+| Session director | Ordered or manual activities with realistic timing and automatic resume |
 | Flexible rotation | Variable timing or fixed 1, 3, 5, 10, 15, or 30-minute intervals |
 | Character selection | Jason, Lucia, or combined play sessions |
 | Clean startup | Optional five-minute period without a description |
@@ -81,13 +81,15 @@ The app can appear in Discord through normal executable detection or send a cust
 
 The desktop menu lets each user build a session without editing code:
 
-- choose **Realistic Auto** for an ordered sequence with natural scene lengths, or switch to a manual activity;
+- choose **Realistic Auto (Resume)** for an ordered sequence with natural scene lengths that restores its last scene after relaunch, or switch to a manual activity;
 - filter the sequence for **Jason Duval**, **Lucia Caminos**, both characters, or automatic selection;
 - rotate scenes at realistic variable times or every **1, 3, 5, 10, 15, or 30 minutes**;
 - pick a suggested activity, skip to the next scene, or write a completely custom status;
 - optionally start with no description for five minutes and enable or disable the custom activity button;
 - use **SET** to edit the activity button label and URL, or restore the `Join` default with **RESET DEFAULTS**;
-- keep preferences in the local saved profile so they are restored on the next launch.
+- keep preferences and the latest automatic scene in the local saved profile so they are restored on the next launch.
+
+The automatic sequence is a plausible session arc inspired by Rockstar's publicly released character and location information. It is not a leaked or claimed mission order.
 
 These controls belong to **Custom Rich Presence** mode. Leave **Discord detection only** enabled when the detected Discord Game Profile, clickable title, and recent activity are more important than custom text.
 
@@ -139,19 +141,21 @@ Skip this section if you only want Discord detection.
 ### Create your Discord application
 
 1. Open the [Discord Developer Portal](https://discord.com/developers/applications).
-2. Select **New Application** and choose a name.
-3. Under **General Information**, copy the **Application ID**.
-4. Do not use your Discord user ID; it is a different value.
-5. You do not need to create a bot.
+2. Select **New Application** and name it `Grand Theft Auto VI`.
+3. Under **General Information**, upload the included `gtavi_cover.png` as the **App Icon**, then save.
+4. On the same page, copy the **Application ID**.
+5. Do not use your Discord user ID; it is a different value. You do not need to create a bot.
 
 ### Add an image asset
 
 1. Open **Rich Presence → Art Assets** in your application.
-2. Upload the included `assets/rich-presence-cover.png` file.
-3. Assign the asset key `gtavi_cover` before saving it.
+2. Upload the same `gtavi_cover.png` file from the release package (source builds create it under `dist`).
+3. Name the uploaded resource `gtavi_cover` before saving it. Discord's technical documentation may call this resource name an **asset key**.
 4. Save the asset and allow Discord a few minutes to update its cache.
 
-Discord does not let you rename a saved asset key. Delete and upload the image again if the key is wrong. The included cover is unofficial fan artwork; replace it with your own square image if preferred.
+The first synchronization of a newly created application can take a few minutes. Keep Discord open, wait briefly, and press **SET STATUS** again if the card or image has not appeared yet. Repeated presses refresh the current automatic scene and do not randomize it.
+
+Discord does not let you rename a saved resource. Delete and upload the image again if its name is wrong. The included cover is unofficial fan artwork; replace it with your own square image if preferred.
 
 ### Save the Application ID
 
@@ -248,6 +252,10 @@ Application IDs and Public Keys are public identifiers. Bot Tokens, Client Secre
 Questions and first-run feedback are welcome in [Discussion #1](https://github.com/mamt104/gta6-discord-status-simulator/discussions/1). Use [Issues](https://github.com/mamt104/gta6-discord-status-simulator/issues) for reproducible bugs, and pull requests for UI improvements, documentation, or new activity sequences. Please keep submissions free of personal configuration and unlicensed artwork.
 
 If the project helped you, starring the repository makes it easier for other people to discover it.
+
+## Credits
+
+Created by **Cyberpino** (**@mamt104 on GitHub**), with feedback and testing from the open-source community.
 
 ## License
 

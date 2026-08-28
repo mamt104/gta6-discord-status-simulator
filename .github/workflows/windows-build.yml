@@ -1,0 +1,49 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build clean package
+        shell: powershell
+        run: .\build.ps1 -Clean
+
+      - name: Verify public package
+        shell: powershell
+        run: |
+          $expected = @('GTA6.exe', 'gta6-image.txt', 'gta6-profile.ini', 'gtavi_cover.png')
+          $actual = Get-ChildItem -LiteralPath .\dist -File | Select-Object -ExpandProperty Name | Sort-Object
+          if (Compare-Object ($expected | Sort-Object) $actual) {
+            throw "Unexpected release files: $($actual -join ', ')"
+          }
+
+          $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path .\dist\GTA6.exe)).FileVersion
+          if ($version -ne '1.4.1.0') { throw "Unexpected executable version: $version" }
+
+          $publicText = Get-Content -Raw .\dist\gta6-image.txt, .\dist\gta6-profile.ini
+          if ($publicText -match '(?<!\d)\d{15,25}(?!\d)') {
+            throw 'A Discord-style numeric identifier was found in the public package.'
+          }
+
+      - name: Create ZIP
+        shell: powershell
+        run: Compress-Archive -Path .\dist\* -DestinationPath .\GTA-VI-Presence-Studio-v1.4.1.zip -Force
+
+      - name: Upload verified artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GTA-VI-Presence-Studio-v1.4.1
+          path: GTA-VI-Presence-Studio-v1.4.1.zip
+          if-no-files-found: error

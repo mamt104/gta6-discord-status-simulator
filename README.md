@@ -30,9 +30,28 @@
 > [!IMPORTANT]
 > This is an unofficial fan-made utility. It is not affiliated with, endorsed by, or sponsored by Rockstar Games, Take-Two Interactive, or Discord. It does not include GTA VI and is not evidence of access to a game build.
 
-## Version 1.3.3 — Realistic Auto Resume
+## Version 1.4.1 — Responsive interface and stability fixes
 
-The Windows build and public source use the same tested implementation. This release fixes automatic first-time setup and makes scene rotation behave like a continuous play session instead of a random status picker.
+This release makes the app easier to configure, test, and reuse while keeping every optional feature disabled on a clean first launch. Version 1.4.1 adds the responsive layouts and rendering fixes listed below; it also includes all profile, diagnostic, and richer-card improvements introduced in 1.4.0.
+
+- **two activity buttons:** Discord's real maximum, each with its own label and destination;
+- **named profiles:** save, load, import, export, and delete Studio presets without exposing the Discord Application ID;
+- **setup health:** check Discord, RPC, asset names, activity buttons, local storage, and the last presence send from one page;
+- **privacy-safe report:** copy troubleshooting information with no Application ID, URL, username, token, or local path;
+- **manual update check:** query the latest GitHub release only when requested, with no analytics or background telemetry;
+- **safe reset:** restore the Application ID and default settings after confirmation while keeping named profiles;
+- **Studio-first button editing:** both activity buttons now sit beside the other live session controls instead of being buried in Settings;
+- **stable dark scrolling:** the card columns use native Windows scrolling with the dark theme when supported, avoiding redraw artifacts;
+- **fully responsive layout:** wide windows use two columns, while narrow or vertical windows switch to one scrollable column with an icon-only navigation rail and adaptive cards;
+- **clean minimize/restore:** responsive rearrangement pauses while minimized, preventing partially painted controls when the window returns;
+- **safe mouse-wheel scrolling:** hovering a closed selector scrolls the page without silently changing mode, character, scene, or timing;
+- **laptop-friendly layout:** the redesigned navigation, footer, preview, and cards remain usable down to a compact 720×540 window.
+
+The on-screen Discord preview mirrors both link buttons side by side. Preview buttons are clickable and open their configured destinations. Discord still controls the final button color and does not provide custom button icons through this API.
+
+### Realistic Auto (Resume)
+
+The Windows build and public source use the same tested automatic-session implementation. It fixes automatic first-time setup and makes scene rotation behave like a continuous play session instead of a random status picker.
 
 - a newly applied Application ID defaults to **Realistic Auto (Resume)**, **Automatic**, suggested activity, empty custom text, and variable timing;
 - a new automatic session starts in **Story Mode**, never at a randomly selected scene or Main Menu;
@@ -73,8 +92,10 @@ The app can appear in Discord through normal executable detection or send a cust
 | Flexible rotation | Variable timing or fixed 1, 3, 5, 10, 15, or 30-minute intervals |
 | Character selection | Jason, Lucia, or combined play sessions |
 | Clean startup | Optional five-minute period without a description |
-| Personal control | Custom status text and an optional activity button with editable label and URL |
-| Persistent settings | Your custom choices are saved; every launch starts safely in native Discord detection |
+| Personal control | Custom status text and up to two editable URL buttons |
+| Named profiles | Save or share complete Studio presets without including your Application ID |
+| Setup health | Local diagnostics and a privacy-safe report for troubleshooting |
+| Persistent settings | Your custom choices are saved; every clean launch starts safely in native Discord detection |
 | Minimal access | No Bot Token, Client Secret, Discord password, or administrator rights required |
 
 ## Customizable session director
@@ -85,8 +106,9 @@ The desktop menu lets each user build a session without editing code:
 - filter the sequence for **Jason Duval**, **Lucia Caminos**, both characters, or automatic selection;
 - rotate scenes at realistic variable times or every **1, 3, 5, 10, 15, or 30 minutes**;
 - pick a suggested activity, skip to the next scene, or write a completely custom status;
-- optionally start with no description for five minutes and enable or disable the custom activity button;
-- use **SET** to edit the activity button label and URL, or restore the `Join` default with **RESET DEFAULTS**;
+- optionally start with no description for five minutes and enable zero, one, or two activity buttons;
+- configure each button's label and URL, or restore its defaults with **RESET DEFAULTS**;
+- optionally add a small Rich Presence image by entering its exact Discord asset name and hover text;
 - keep preferences and the latest automatic scene in the local saved profile so they are restored on the next launch.
 
 The automatic sequence is a plausible session arc inspired by Rockstar's publicly released character and location information. It is not a leaked or claimed mission order.
@@ -132,7 +154,7 @@ This registration step is required. Without it, Discord may display the wrong na
 
 **Custom Rich Presence** replaces the detected card. Discord can underline or make the complete `name + details + state` block clickable; the RPC protocol does not expose a setting that limits the clickable area to the game name.
 
-The custom activity button is shown to other Discord users, not on your own profile. Its default label is `Join` and its default destination is Rockstar's official GTA VI pre-order page. Both values can be changed or reset inside the app.
+Custom activity buttons are shown to other Discord users, not on your own profile. Button 1 defaults to `Join` and Rockstar's official GTA VI store page; button 2 defaults to `Official Website` and Rockstar's GTA VI page. Both start disabled and both values can be changed or reset inside the app. Discord chooses their color and does not accept a custom button icon.
 
 ## Custom Rich Presence setup
 
@@ -156,6 +178,12 @@ Skip this section if you only want Discord detection.
 The first synchronization of a newly created application can take a few minutes. Keep Discord open, wait briefly, and press **SET STATUS** again if the card or image has not appeared yet. Repeated presses refresh the current automatic scene and do not randomize it.
 
 Discord does not let you rename a saved resource. Delete and upload the image again if its name is wrong. The included cover is unofficial fan artwork; replace it with your own square image if preferred.
+
+## Profiles and diagnostics
+
+The **Profiles** page stores reusable scene, character, rotation, and activity-button preferences. The Application ID remains in its own local file and is never copied into exported profiles.
+
+The **Diagnostics** page performs local checks only. **COPY SAFE REPORT** deliberately omits the Application ID value, button URLs, account details, tokens, and filesystem paths. **RESET APPLICATION** asks for confirmation, clears the default Application ID and settings, and preserves named profiles.
 
 ### Save the Application ID
 
